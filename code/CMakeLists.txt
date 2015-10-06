@@ -1,5 +1,5 @@
 SET(handmade_SRCS win32_handmade.cpp)
-# SET(SYSTEM_LIBS user32.lib)
+# SET(SYSTEM_LIBS Xinput.lib)
 
 add_executable(handmade WIN32 ${handmade_SRCS})
 
