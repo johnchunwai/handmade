@@ -15,7 +15,6 @@ struct Win32OffscreenBuffer
     void *memory;
     int width;
     int height;
-    int bytesPerPixel;
     ptrdiff_t pitch;
 };
 
@@ -30,12 +29,10 @@ struct Win32WindowDimension
 
 internal Win32WindowDimension Win32GetWindowDimension(HWND hwnd)
 {
-    Win32WindowDimension result {};
     RECT windowRect;
     // rc.top and rc.left are always 0
     GetClientRect(hwnd, &windowRect);
-    result.width = windowRect.right - windowRect.left;
-    result.height = windowRect.bottom - windowRect.top;
+    Win32WindowDimension result {windowRect.right - windowRect.left, windowRect.bottom - windowRect.top};
     return result;
 }
 
@@ -55,7 +52,7 @@ internal void Win32DebugPrintLastError()
     LocalFree(msg);
 }
 
-internal void RenderWeirdGradient(Win32OffscreenBuffer buffer, int xoffset, int yoffset)
+internal void RenderWeirdGradient(Win32OffscreenBuffer buffer, int blueOffset, int greenOffset)
 {
     // draw something
     uint8_t *row = static_cast<uint8_t*>(buffer.memory);
@@ -75,15 +72,16 @@ internal void RenderWeirdGradient(Win32OffscreenBuffer buffer, int xoffset, int 
               Register:  xx RR GG BB
             */
             uint8_t red = 0;
-            uint8_t green = y + yoffset;
-            uint8_t blue = x + xoffset;
+            uint8_t green = y + greenOffset;
+            uint8_t blue = x + blueOffset;
+            // little endian - least sig val on smallest addr
             *pixel++ = (red << 16) | (green << 8) | blue;
         }
         row += buffer.pitch;
     }
 }
 
-internal void Win32ResizeDibSection(Win32OffscreenBuffer &buffer, int width, int height)
+internal void Win32ResizeBackBuffer(Win32OffscreenBuffer &buffer, int width, int height)
 {
     // TODO: bulletproof this.
     // maybe don't free first, free after.
@@ -93,6 +91,7 @@ internal void Win32ResizeDibSection(Win32OffscreenBuffer &buffer, int width, int
         buffer.memory = nullptr;
     }
 
+    int bytesPerPixel = 4;
     buffer.width = width;
     buffer.height = height;
 
@@ -103,12 +102,11 @@ internal void Win32ResizeDibSection(Win32OffscreenBuffer &buffer, int width, int
     buffer.info.bmiHeader.biWidth = buffer.width;
     buffer.info.bmiHeader.biHeight = -buffer.height;  // negative indicates top down DIB
     
-    buffer.bytesPerPixel = buffer.info.bmiHeader.biBitCount / 8;
-    buffer.pitch = buffer.width * buffer.bytesPerPixel;
+    buffer.pitch = buffer.width * bytesPerPixel;
 
     // StretchDIBits doesn't need device context or DibSection (compared to BitBlt)
     // just need the memory to be aligned on DWORD boundary
-    int bitmapMemorySize = buffer.width * buffer.height * buffer.bytesPerPixel;
+    int bitmapMemorySize = buffer.width * buffer.height * bytesPerPixel;
     buffer.memory = VirtualAlloc(nullptr, bitmapMemorySize, MEM_COMMIT, PAGE_READWRITE);
     assert(buffer.memory);
 }
@@ -137,15 +135,8 @@ LRESULT CALLBACK Win32WndProc(
     {
     case WM_SIZE:
         {
-            // two ways to get it
-            // RECT rc;
-            // // rc.top and rc.left are always 0
-            // GetClientRect(hwnd, &rc);
-            // int width = rc.right;
-            // int height = rc.bottom;
-            int width = LOWORD(lparam);
-            int height = HIWORD(lparam);
-            // Win32ResizeDibSection(gBackbuffer, width, height);
+            // int width = LOWORD(lparam);
+            // int height = HIWORD(lparam);
         }
         break;
 
@@ -173,11 +164,6 @@ LRESULT CALLBACK Win32WndProc(
         {
             PAINTSTRUCT paint;
             HDC dvcCtx = BeginPaint(hwnd, &paint);
-            // int x = paint.rcPaint.left;
-            // int y = paint.rcPaint.top;
-            // int w = paint.rcPaint.right - x;
-            // int h = paint.rcPaint.bottom - y;
-
             Win32WindowDimension dimension = Win32GetWindowDimension(hwnd);
             Win32DisplayOffscreenBuffer(gBackbuffer, dvcCtx, dimension.width, dimension.height);
             EndPaint(hwnd, &paint);
@@ -185,7 +171,9 @@ LRESULT CALLBACK Win32WndProc(
         break;
 
     default:
-        lresult = DefWindowProcW(hwnd, msg, wparam, lparam);
+        {
+            lresult = DefWindowProcW (hwnd, msg, wparam, lparam);
+        }
         break;
     }
     return lresult;
@@ -198,11 +186,11 @@ int CALLBACK wWinMain(
     LPWSTR,     // not using lpCmdLine
     int)        // not using nCmdShow
 {
-    Win32ResizeDibSection(gBackbuffer, 1280, 720);
+    Win32ResizeBackBuffer(gBackbuffer, 1280, 720);
     wchar_t *wndClassName = L"Handmade Hero Window Class";
     WNDCLASSEXW wndClass = {};  // c++11 aggregate initialization to zero the struct
     wndClass.cbSize = sizeof(WNDCLASSEX);
-    wndClass.style = CS_HREDRAW | CS_VREDRAW;  // | CS_OWNDC
+    wndClass.style = CS_HREDRAW | CS_VREDRAW;
     wndClass.lpfnWndProc = Win32WndProc;
     wndClass.hInstance = hInstance;
     wndClass.lpszClassName = wndClassName;
@@ -227,8 +215,8 @@ int CALLBACK wWinMain(
 
     // message pump
     gRunning = true;
-    int xoffset = 0;
-    int yoffset = 0;
+    int blueOffset = 0;
+    int greenOffset = 0;
     while (gRunning)
     {
         MSG msg;
@@ -248,15 +236,15 @@ int CALLBACK wWinMain(
         if (!gRunning)
         {
             break;
-        }
+         }
 
-        RenderWeirdGradient(gBackbuffer, xoffset, yoffset);
+        RenderWeirdGradient(gBackbuffer, blueOffset, greenOffset);
         HDC dvcCtx = GetDC(hwnd);
         Win32WindowDimension dimension = Win32GetWindowDimension(hwnd);
         Win32DisplayOffscreenBuffer(gBackbuffer, dvcCtx, dimension.width, dimension.height);
         ReleaseDC(hwnd, dvcCtx);
-        ++xoffset;
-        yoffset += 2;
+        ++blueOffset;
+        greenOffset += 2;
     }
     
     // MessageBoxW(nullptr, L"hello world", L"hello", MB_OK | MB_ICONINFORMATION);
