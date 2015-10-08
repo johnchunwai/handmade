@@ -4,6 +4,9 @@
 
 #include <cassert>
 #include <cstdint>
+#include <cmath>
+#include <utility>
+#include <sstream>
 
 #define local_persist static
 #define global_variable static
@@ -28,6 +31,17 @@ struct Win32WindowDimension
 // TODO: global for now
 global_variable bool gRunning = false;
 global_variable Win32OffscreenBuffer gBackbuffer {};
+constexpr float epsilon = 0.00001f;
+constexpr float gXInputMaxStickVal = 32767.0f;
+// constexpr float MIN_XINPUT_STICK_VAL = -32768;
+
+internal float Win32GetXInputStickNormalizedDeadzone(float magnitudeDeadzone)
+{
+    return magnitudeDeadzone / sqrtf(gXInputMaxStickVal * gXInputMaxStickVal * 2.0f);
+}
+global_variable float gXInputLeftThumbNormalizedDeadzone =
+        Win32GetXInputStickNormalizedDeadzone(XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+// constexpr float gXInputRightThumbNormalizedDeadzone(XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
 
 // XInputGetState
 #define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE* pState)
@@ -69,6 +83,38 @@ internal void Win32LoadXInput()
             break;
         }
     }
+}
+
+internal std::pair<float, float> Win32NormalizeXInputStickMagnitude(float xVal, float yVal, float deadzone)
+{
+    // normalize the input first (-1.0f to 1.0f)
+    // max with -1 because abs(min val) is 1 great then max val
+    xVal = fmaxf(-1.0f, xVal / gXInputMaxStickVal);
+    yVal = fmaxf(-1.0f, yVal / gXInputMaxStickVal);
+
+    // adjust for deadzone
+    if (xVal >= 0.0f)
+    {
+        xVal = xVal < deadzone ? 0 : xVal - deadzone;
+    }
+    else
+    {
+        xVal = xVal > -deadzone ? 0 : xVal + deadzone;
+    }
+    if (yVal >= 0.0f)
+    {
+        yVal = yVal < deadzone ? 0 : yVal - deadzone;
+    }
+    else
+    {
+        yVal = yVal > -deadzone ? 0 : yVal + deadzone;
+    }
+
+    // scale the val for smooth transition outside deadzone
+    xVal *= (1 / (1 - deadzone));
+    yVal *= (1 / (1 - deadzone));
+
+    return std::make_pair(xVal, yVal);
 }
 
 internal Win32WindowDimension Win32GetWindowDimension(HWND hwnd)
@@ -398,9 +444,22 @@ int CALLBACK wWinMain(
                 bool xButton = pad.wButtons & XINPUT_GAMEPAD_X;
                 bool yButton = pad.wButtons & XINPUT_GAMEPAD_Y;
 
-                int16_t lStickX = pad.sThumbLX;
-                int16_t lStickY = pad.sThumbLY;
+                auto stickXY= Win32NormalizeXInputStickMagnitude(pad.sThumbLX, pad.sThumbLY,
+                                                                 gXInputLeftThumbNormalizedDeadzone);
+                float lStickX = stickXY.first;
+                float lStickY = stickXY.second;
+                std::stringstream ss;
+                ss << "stickx = " << lStickX << " sticky=" << lStickY << std::endl;
+                OutputDebugStringA(ss.str().c_str());
 
+                if (lStickX > epsilon || lStickX < -epsilon)
+                {
+                    blueOffset -= lStickX * 10.0f;
+                }
+                if (lStickY > epsilon || lStickY < -epsilon)
+                {
+                    greenOffset += lStickY * 5.0f;
+                }
                 if (xButton)
                 {
                     blueOffset += 5;
@@ -432,8 +491,6 @@ int CALLBACK wWinMain(
         Win32WindowDimension dimension = Win32GetWindowDimension(hwnd);
         Win32DisplayOffscreenBuffer(gBackbuffer, dvcCtx, dimension.width, dimension.height);
         ReleaseDC(hwnd, dvcCtx);
-
-        blueOffset++;
     }
     
     // MessageBoxW(nullptr, L"hello world", L"hello", MB_OK | MB_ICONINFORMATION);
