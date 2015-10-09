@@ -12,6 +12,7 @@
 #define global_variable static
 #define internal static
 
+typedef int32_t bool32;
 
 struct Win32OffscreenBuffer
 {
@@ -29,7 +30,7 @@ struct Win32WindowDimension
 };
 
 // TODO: global for now
-global_variable bool gRunning = false;
+global_variable bool32 gRunning = false;
 global_variable Win32OffscreenBuffer gBackbuffer {};
 constexpr float epsilon = 0.00001f;
 constexpr float gXInputMaxStickVal = 32767.0f;
@@ -44,7 +45,7 @@ global_variable float gXInputLeftThumbNormalizedDeadzone =
 // constexpr float gXInputRightThumbNormalizedDeadzone(XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
 
 // XInputGetState
-#define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE* pState)
+#define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_STATE*)
 typedef X_INPUT_GET_STATE(XInputGetStateTypedef);
 X_INPUT_GET_STATE(XInputGetStateStub)
 {
@@ -54,7 +55,7 @@ global_variable XInputGetStateTypedef *XInputGetState_ = XInputGetStateStub;
 #define XInputGetState XInputGetState_
 
 // XInputSetState
-#define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_VIBRATION* pVibration)
+#define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_VIBRATION*)
 typedef X_INPUT_SET_STATE(XInputSetStateTypedef);
 X_INPUT_SET_STATE(XInputSetStateStub)
 {
@@ -162,8 +163,8 @@ internal void RenderWeirdGradient(Win32OffscreenBuffer &buffer, int blueOffset, 
               Register:  xx RR GG BB
             */
             uint8_t red = 0;
-            uint8_t green = y + greenOffset;
-            uint8_t blue = x + blueOffset;
+            uint8_t green = static_cast<uint8_t>(y + greenOffset);
+            uint8_t blue = static_cast<uint8_t>(x + blueOffset);
             // little endian - least sig val on smallest addr
             *pixel++ = (red << 16) | (green << 8) | blue;
         }
@@ -211,6 +212,7 @@ internal void Win32DisplayOffscreenBuffer(Win32OffscreenBuffer &buffer,
                                       0, 0, buffer.width, buffer.height,
                                       buffer.memory, &buffer.info,
                                       DIB_RGB_COLORS, SRCCOPY);
+    assert(stretchResult);
 }
 
 internal LRESULT CALLBACK Win32WndProc(
@@ -256,8 +258,8 @@ internal LRESULT CALLBACK Win32WndProc(
     case WM_KEYUP:
         {
             WPARAM vkCode = wparam;
-            bool wasDown = ((lparam & (1 << 30)) != 0);
-            bool isDown = ((lparam & (1 << 31)) == 0);
+            bool32 wasDown = (lparam & (1 << 30));
+            bool32 isDown = (lparam & (1 << 31));
             if (isDown != wasDown)
             {
                 switch (vkCode)
@@ -334,6 +336,15 @@ internal LRESULT CALLBACK Win32WndProc(
                 case VK_RETURN:
                     {
                         OutputDebugStringA("ENTER\n");
+                    }
+                    break;
+                case VK_F4:
+                    {
+                        bool32 altDown = (lparam & (1 << 29));
+                        if (altDown)
+                        {
+                            gRunning = false;
+                        }
                     }
                     break;
                 }
@@ -431,20 +442,20 @@ int CALLBACK wWinMain(
                 controllerState.dwPacketNumber;
                 XINPUT_GAMEPAD &pad = controllerState.Gamepad;
                 // these are what we care about
-                bool up = pad.wButtons & XINPUT_GAMEPAD_DPAD_UP;
-                bool down = pad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
-                bool left = pad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
-                bool right = pad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
-                bool start = pad.wButtons & XINPUT_GAMEPAD_START;
-                bool back = pad.wButtons & XINPUT_GAMEPAD_BACK;
-                bool leftShoulder = pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
-                bool rightShoulder = pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
-                bool aButton = pad.wButtons & XINPUT_GAMEPAD_A;
-                bool bButton = pad.wButtons & XINPUT_GAMEPAD_B;
-                bool xButton = pad.wButtons & XINPUT_GAMEPAD_X;
-                bool yButton = pad.wButtons & XINPUT_GAMEPAD_Y;
+                // bool32 up = pad.wButtons & XINPUT_GAMEPAD_DPAD_UP;
+                // bool32 down = pad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
+                // bool32 left = pad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
+                // bool32 right = pad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
+                // bool32 start = pad.wButtons & XINPUT_GAMEPAD_START;
+                // bool32 back = pad.wButtons & XINPUT_GAMEPAD_BACK;
+                // bool32 leftShoulder = pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
+                // bool32 rightShoulder = pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
+                // bool32 aButton = pad.wButtons & XINPUT_GAMEPAD_A;
+                // bool32 bButton = pad.wButtons & XINPUT_GAMEPAD_B;
+                bool32 xButton = pad.wButtons & XINPUT_GAMEPAD_X;
+                bool32 yButton = pad.wButtons & XINPUT_GAMEPAD_Y;
 
-                auto stickXY= Win32NormalizeXInputStickMagnitude(pad.sThumbLX, pad.sThumbLY,
+                auto stickXY = Win32NormalizeXInputStickMagnitude(pad.sThumbLX, pad.sThumbLY,
                                                                  gXInputLeftThumbNormalizedDeadzone);
                 float lStickX = stickXY.first;
                 float lStickY = stickXY.second;
@@ -454,11 +465,11 @@ int CALLBACK wWinMain(
 
                 if (lStickX > epsilon || lStickX < -epsilon)
                 {
-                    blueOffset -= lStickX * 10.0f;
+                    blueOffset -= static_cast<int>(lStickX * 10.0f);
                 }
                 if (lStickY > epsilon || lStickY < -epsilon)
                 {
-                    greenOffset += lStickY * 5.0f;
+                    greenOffset += static_cast<int>(lStickY * 5.0f);
                 }
                 if (xButton)
                 {
