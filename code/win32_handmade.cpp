@@ -1,7 +1,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <xinput.h>
-
+#include <mmsystem.h>
+#include <dsound.h>
 #include <cassert>
 #include <cstdint>
 #include <cmath>
@@ -17,16 +18,16 @@ typedef int32_t bool32;
 struct Win32OffscreenBuffer
 {
     BITMAPINFO info;
-    void *memory;
-    int width;
-    int height;
+    int32_t width;
+    int32_t height;
     ptrdiff_t pitch;
+    void *memory;
 };
 
 struct Win32WindowDimension
 {
-    int width;
-    int height;
+    int32_t width;
+    int32_t height;
 };
 
 // TODO: global for now
@@ -64,6 +65,15 @@ X_INPUT_SET_STATE(XInputSetStateStub)
 global_variable XInputSetStateTypedef *XInputSetState_ = XInputSetStateStub;
 #define XInputSetState XInputSetState_
 
+#define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(LPCGUID, LPDIRECTSOUND *, LPUNKNOWN)
+typedef DIRECT_SOUND_CREATE(DirectSoundCreateTypedef);
+// DIRECT_SOUND_CREATE(DirectSoundCreateStub)
+// {
+//     return DSERR_NODRIVER;
+// }
+// global_variable DirectSoundCreateTypedef *DirectSoundCreate_ = DirectSoundCreateStub;
+// #define DirectSoundCreate DirectSoundCreate_
+
 internal void Win32LoadXInput()
 {
     char *xInputDlls[] = {
@@ -73,7 +83,7 @@ internal void Win32LoadXInput()
     };
     for (auto &xInputDll : xInputDlls)
     {
-        HMODULE xInputLibrary = LoadLibraryA (xInputDll);
+        HMODULE xInputLibrary = LoadLibraryA(xInputDll);
         if (xInputLibrary)
         {
             XInputGetState = reinterpret_cast<XInputGetStateTypedef*>(GetProcAddress(xInputLibrary,
@@ -127,6 +137,93 @@ internal Win32WindowDimension Win32GetWindowDimension(HWND hwnd)
     return result;
 }
 
+internal void Win32InitDSound(HWND hwnd, int32_t samplesPerSec, int32_t bufferSize)
+{
+    // load library
+    HMODULE dSoundLibrary = LoadLibraryA("dsound.dll");
+    if (dSoundLibrary)
+    {
+        // get DirectSound object - cooperative mode
+        DirectSoundCreateTypedef *DirectSoundCreate = reinterpret_cast<DirectSoundCreateTypedef*>(
+            GetProcAddress(dSoundLibrary, "DirectSoundCreate"));
+        IDirectSound *directSound;
+        if (DirectSoundCreate && SUCCEEDED(DirectSoundCreate(0, &directSound, 0)))
+        {
+            // just simple 2 ch stereo sound
+            WAVEFORMATEX waveFormat {};
+            waveFormat.wFormatTag = WAVE_FORMAT_PCM;
+            waveFormat.nChannels = 2;
+            waveFormat.nSamplesPerSec = samplesPerSec;
+            waveFormat.wBitsPerSample = 16;
+            waveFormat.nBlockAlign = (waveFormat.nChannels * waveFormat.wBitsPerSample) / 8;
+            waveFormat.nAvgBytesPerSec = waveFormat.nSamplesPerSec * waveFormat.nBlockAlign;
+            // waveFormat.cbSize = 0;
+            
+            if (SUCCEEDED(directSound->SetCooperativeLevel(hwnd, DSSCL_PRIORITY)))
+            {
+                // create a primary buffer (object that mixes all sounds)
+                DSBUFFERDESC bufferDesc {};
+                bufferDesc.dwSize = sizeof(DSBUFFERDESC);
+                bufferDesc.dwFlags = DSBCAPS_PRIMARYBUFFER;  // DSBCAPS_GLOBALFOCUS?
+                // bufferDesc.dwBufferBytes = 0;
+                // bufferDesc.lpwfxFormat = nullptr;
+                // bufferDesc.guid3DAlgorithm = DS3DALG_DEFAULT;  // same as 0
+                
+                IDirectSoundBuffer *primaryBuffer;
+                if (SUCCEEDED(directSound->CreateSoundBuffer(&bufferDesc, &primaryBuffer, nullptr)))
+                {
+                    if (SUCCEEDED(primaryBuffer->SetFormat(&waveFormat)))
+                    {
+                        // We have finally set the format.
+                        OutputDebugStringA("Primary buffer format was set.\n");
+                    }
+                    else
+                    {
+                        // TODO: diagnostic
+                    }
+                }
+                else
+                {
+                    // TODO: diagnostic
+                }
+            }
+            else
+            {
+                // TODO: diagnostic
+            }
+
+            // create a 2ndary buffer (that holds the sound data)
+            // this can be done independent of the above failures
+            DSBUFFERDESC bufferDesc {};
+            bufferDesc.dwSize = sizeof(DSBUFFERDESC);
+            bufferDesc.dwFlags = 0;  // DSBCAPS_GLOBALFOCUS?
+            bufferDesc.dwBufferBytes = bufferSize;
+            bufferDesc.lpwfxFormat = &waveFormat;
+            // bufferDesc.guid3DAlgorithm = DS3DALG_DEFAULT;  // same as 0
+                
+            IDirectSoundBuffer *secondaryBuffer;
+            if (SUCCEEDED(directSound->CreateSoundBuffer(&bufferDesc, &secondaryBuffer, nullptr)))
+            {
+                OutputDebugStringA("Secondary buffer created successfully\n");
+            }
+            else
+            {
+                // TODO: diagnostics
+            }
+
+            // start it playing
+        }
+        else
+        {
+            // TODO: diagnostic
+        }
+    }
+    else
+    {
+        // TODO: diagnostic
+    }
+}
+
 internal void Win32DebugPrintLastError()
 {
     wchar_t *msg = nullptr;
@@ -143,14 +240,14 @@ internal void Win32DebugPrintLastError()
     LocalFree(msg);
 }
 
-internal void RenderWeirdGradient(Win32OffscreenBuffer &buffer, int blueOffset, int greenOffset)
+internal void RenderWeirdGradient(Win32OffscreenBuffer &buffer, int32_t blueOffset, int32_t greenOffset)
 {
     // draw something
     uint8_t *row = static_cast<uint8_t*>(buffer.memory);
-    for (int y = 0; y < buffer.height; ++y)
+    for (int32_t y = 0; y < buffer.height; ++y)
     {
         uint32_t* pixel = reinterpret_cast<uint32_t*>(row);
-        for (int x = 0; x < buffer.width; ++x)
+        for (int32_t x = 0; x < buffer.width; ++x)
         {
             /*
               pixel in memory:
@@ -172,7 +269,7 @@ internal void RenderWeirdGradient(Win32OffscreenBuffer &buffer, int blueOffset, 
     }
 }
 
-internal void Win32ResizeBackBuffer(Win32OffscreenBuffer &buffer, int width, int height)
+internal void Win32ResizeBackBuffer(Win32OffscreenBuffer &buffer, int32_t width, int32_t height)
 {
     // TODO: bulletproof this.
     // maybe don't free first, free after.
@@ -182,7 +279,7 @@ internal void Win32ResizeBackBuffer(Win32OffscreenBuffer &buffer, int width, int
         buffer.memory = nullptr;
     }
 
-    int bytesPerPixel = 4;
+    int32_t bytesPerPixel = 4;
     buffer.width = width;
     buffer.height = height;
 
@@ -197,17 +294,17 @@ internal void Win32ResizeBackBuffer(Win32OffscreenBuffer &buffer, int width, int
 
     // StretchDIBits doesn't need device context or DibSection (compared to BitBlt)
     // just need the memory to be aligned on DWORD boundary
-    int bitmapMemorySize = buffer.width * buffer.height * bytesPerPixel;
-    buffer.memory = VirtualAlloc(nullptr, bitmapMemorySize, MEM_COMMIT, PAGE_READWRITE);
+    int32_t bitmapMemorySize = buffer.width * buffer.height * bytesPerPixel;
+    buffer.memory = VirtualAlloc(nullptr, bitmapMemorySize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     assert(buffer.memory);
 }
 
 internal void Win32DisplayOffscreenBuffer(Win32OffscreenBuffer &buffer,
-                                          HDC dvcCtx, int width, int height)
+                                          HDC dvcCtx, int32_t width, int32_t height)
 {
     // Setting to stretch blt mode to prevent artifacts when shrink blt.
     SetStretchBltMode(dvcCtx, STRETCH_DELETESCANS);
-    int stretchResult = StretchDIBits(dvcCtx,
+    int32_t stretchResult = StretchDIBits(dvcCtx,
                                       0, 0, width, height,
                                       0, 0, buffer.width, buffer.height,
                                       buffer.memory, &buffer.info,
@@ -372,14 +469,14 @@ internal LRESULT CALLBACK Win32WndProc(
 }
 
 
-int CALLBACK wWinMain(
+int32_t CALLBACK wWinMain(
     HINSTANCE hInstance,
     HINSTANCE,  // hPrevInst is useless
     LPWSTR,     // not using lpCmdLine
     int)        // not using nCmdShow
 {
-    Win32ResizeBackBuffer(gBackbuffer, 1280, 720);
     Win32LoadXInput();
+    Win32ResizeBackBuffer(gBackbuffer, 1280, 720);
     wchar_t *wndClassName = L"Handmade Hero Window Class";
     WNDCLASSEXW wndClass = {};  // c++11 aggregate initialization to zero the struct
     wndClass.cbSize = sizeof(WNDCLASSEX);
@@ -406,10 +503,12 @@ int CALLBACK wWinMain(
         return 0;
     }
 
+    Win32InitDSound(hwnd, 48000, 48000 * sizeof(int16_t) * 2);
+
     // message pump
     gRunning = true;
-    int blueOffset = 0;
-    int greenOffset = 0;
+    int32_t blueOffset = 0;
+    int32_t greenOffset = 0;
     while (gRunning)
     {
         MSG msg;
@@ -459,9 +558,9 @@ int CALLBACK wWinMain(
                                                                  gXInputLeftThumbNormalizedDeadzone);
                 float lStickX = stickXY.first;
                 float lStickY = stickXY.second;
-                std::stringstream ss;
-                ss << "stickx = " << lStickX << " sticky=" << lStickY << std::endl;
-                OutputDebugStringA(ss.str().c_str());
+                // std::stringstream ss;
+                // ss << "stickx = " << lStickX << " sticky=" << lStickY << std::endl;
+                // OutputDebugStringA(ss.str().c_str());
 
                 if (lStickX > epsilon || lStickX < -epsilon)
                 {
