@@ -33,6 +33,8 @@ struct Win32WindowDimension
 // TODO: global for now
 global_variable bool32 gRunning = false;
 global_variable Win32OffscreenBuffer gBackbuffer {};
+global_variable IDirectSoundBuffer *gSoundBuffer = nullptr;
+constexpr int32_t gSoundChannels = 2;
 constexpr float epsilon = 0.00001f;
 constexpr float gXInputMaxStickVal = 32767.0f;
 // constexpr float MIN_XINPUT_STICK_VAL = -32768;
@@ -137,7 +139,7 @@ internal Win32WindowDimension Win32GetWindowDimension(HWND hwnd)
     return result;
 }
 
-internal void Win32InitDSound(HWND hwnd, int32_t samplesPerSec, int32_t bufferSize)
+internal void Win32InitDSound(HWND hwnd, uint32_t samplesPerSec, uint32_t bufferSize)
 {
     // load library
     HMODULE dSoundLibrary = LoadLibraryA("dsound.dll");
@@ -152,7 +154,7 @@ internal void Win32InitDSound(HWND hwnd, int32_t samplesPerSec, int32_t bufferSi
             // just simple 2 ch stereo sound
             WAVEFORMATEX waveFormat {};
             waveFormat.wFormatTag = WAVE_FORMAT_PCM;
-            waveFormat.nChannels = 2;
+            waveFormat.nChannels = gSoundChannels;
             waveFormat.nSamplesPerSec = samplesPerSec;
             waveFormat.wBitsPerSample = 16;
             waveFormat.nBlockAlign = (waveFormat.nChannels * waveFormat.wBitsPerSample) / 8;
@@ -200,9 +202,7 @@ internal void Win32InitDSound(HWND hwnd, int32_t samplesPerSec, int32_t bufferSi
             bufferDesc.dwBufferBytes = bufferSize;
             bufferDesc.lpwfxFormat = &waveFormat;
             // bufferDesc.guid3DAlgorithm = DS3DALG_DEFAULT;  // same as 0
-                
-            IDirectSoundBuffer *secondaryBuffer;
-            if (SUCCEEDED(directSound->CreateSoundBuffer(&bufferDesc, &secondaryBuffer, nullptr)))
+            if (SUCCEEDED(directSound->CreateSoundBuffer(&bufferDesc, &gSoundBuffer, nullptr)))
             {
                 OutputDebugStringA("Secondary buffer created successfully\n");
             }
@@ -210,8 +210,6 @@ internal void Win32InitDSound(HWND hwnd, int32_t samplesPerSec, int32_t bufferSi
             {
                 // TODO: diagnostics
             }
-
-            // start it playing
         }
         else
         {
@@ -503,18 +501,31 @@ int32_t CALLBACK wWinMain(
         return 0;
     }
 
-    Win32InitDSound(hwnd, 48000, 48000 * sizeof(int16_t) * 2);
-
-    // message pump
-    gRunning = true;
+    // graphics test
     int32_t blueOffset = 0;
     int32_t greenOffset = 0;
+
+    // sound test
+    int16_t toneVolume = 1000;
+    uint32_t toneHz = 261;
+    uint32_t samplesPerSec = 48000;
+    uint32_t squareWavePeriod = samplesPerSec / toneHz;
+    uint32_t halfSquareWavePeriod = squareWavePeriod / 2;
+    uint32_t bytesPerSample = sizeof(int16_t) * gSoundChannels;
+    uint32_t soundBufferSize = samplesPerSec * bytesPerSample * 2;
+    uint32_t runningSampleIndex = 0;
+
+    // create buffer for 2 sec
+    Win32InitDSound(hwnd, samplesPerSec, soundBufferSize);
+    bool32 soundIsPlaying = false;
+
+    gRunning = true;
     while (gRunning)
     {
         MSG msg;
         // BOOL msgResult = GetMessageW(&msg, nullptr, 0, 0);
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
-        // if (msgResult > 0)
+            // if (msgResult > 0)
         {
             if (msg.message == WM_QUIT)
             {
@@ -555,7 +566,7 @@ int32_t CALLBACK wWinMain(
                 bool32 yButton = pad.wButtons & XINPUT_GAMEPAD_Y;
 
                 auto stickXY = Win32NormalizeXInputStickMagnitude(pad.sThumbLX, pad.sThumbLY,
-                                                                 gXInputLeftThumbNormalizedDeadzone);
+                                                                  gXInputLeftThumbNormalizedDeadzone);
                 float lStickX = stickXY.first;
                 float lStickY = stickXY.second;
                 // std::stringstream ss;
@@ -597,6 +608,70 @@ int32_t CALLBACK wWinMain(
         }
 
         RenderWeirdGradient(gBackbuffer, blueOffset, greenOffset);
+
+        // DirectSound output test
+        if (gSoundBuffer)
+        {
+            DWORD playCursor;
+            if (SUCCEEDED(gSoundBuffer->GetCurrentPosition(&playCursor, nullptr)))
+            {
+                // fill the buffer till the play cursor
+                DWORD byteToLock = (runningSampleIndex * bytesPerSample) % soundBufferSize;
+                DWORD bytesToWrite;
+                if (byteToLock == playCursor)
+                {
+                    // when it first starts up
+                    bytesToWrite = soundBufferSize;
+                }
+                else if (byteToLock > playCursor)
+                {
+                    bytesToWrite = soundBufferSize - byteToLock + playCursor;
+                }
+                else
+                {
+                    bytesToWrite = playCursor - byteToLock;
+                }
+
+                // int16_t int16_t int16_t ...
+                // [left   right]  [left   right] ...
+                constexpr int32_t maxRegions = 2;
+                void *regions[maxRegions] = {};
+                DWORD regionSizes[maxRegions] = {};
+                
+                if (SUCCEEDED(gSoundBuffer->Lock(
+                        byteToLock,
+                        bytesToWrite,
+                        &regions[0], &regionSizes[0],
+                        &regions[1], &regionSizes[1],
+                        0)))
+                {
+                    for (int32_t regionIndex = 0; regionIndex < maxRegions; ++regionIndex)
+                    {
+                        // TODO assert regionSizes are valid
+                        assert(0 == (regionSizes[regionIndex] % (sizeof(int16_t) * gSoundChannels)));
+                        // Just do a square wave
+                        int16_t *sampleOut = static_cast<int16_t*>(regions[regionIndex]);
+                        for (DWORD sampleIndex = 0, sampleEnd = regionSizes[regionIndex] / bytesPerSample;
+                             sampleIndex < sampleEnd;
+                             ++sampleIndex)
+                        {
+                            int16_t sampleVal = ((runningSampleIndex / halfSquareWavePeriod) % 2) ?
+                                    toneVolume : -toneVolume;
+                            *sampleOut++ = sampleVal;
+                            *sampleOut++ = sampleVal;
+                            ++runningSampleIndex;
+                        }
+                    }
+                    gSoundBuffer->Unlock(regions[0], regionSizes[0], regions[1], regionSizes[1]);
+                }
+            }
+
+            if (!soundIsPlaying)
+            {
+                gSoundBuffer->Play(0, 0, DSBPLAY_LOOPING);
+                soundIsPlaying = true;
+            }
+        }        
         HDC dvcCtx = GetDC(hwnd);
         Win32WindowDimension dimension = Win32GetWindowDimension(hwnd);
         Win32DisplayOffscreenBuffer(gBackbuffer, dvcCtx, dimension.width, dimension.height);
