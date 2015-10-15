@@ -5,9 +5,9 @@
 #include <dsound.h>
 #include <cassert>
 #include <cstdint>
-#include <cmath>
 #include <utility>
-#include <sstream>
+//#include <sstream>
+#include <cmath>
 
 #define local_persist static
 #define global_variable static
@@ -34,14 +34,14 @@ struct Win32WindowDimension
 global_variable bool32 gRunning = false;
 global_variable Win32OffscreenBuffer gBackbuffer {};
 global_variable IDirectSoundBuffer *gSoundBuffer = nullptr;
-constexpr int32_t gSoundChannels = 2;
+global_variable const float PI_FLOAT = std::atan(1.0f) * 4.0f;
 constexpr float epsilon = 0.00001f;
 constexpr float gXInputMaxStickVal = 32767.0f;
 // constexpr float MIN_XINPUT_STICK_VAL = -32768;
 
 internal float Win32GetXInputStickNormalizedDeadzone(float magnitudeDeadzone)
 {
-    return magnitudeDeadzone / sqrtf(gXInputMaxStickVal * gXInputMaxStickVal * 2.0f);
+    return magnitudeDeadzone / std::sqrt(gXInputMaxStickVal * gXInputMaxStickVal * 2.0f);
 }
 global_variable float gXInputLeftThumbNormalizedDeadzone =
         Win32GetXInputStickNormalizedDeadzone(XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
@@ -139,7 +139,7 @@ internal Win32WindowDimension Win32GetWindowDimension(HWND hwnd)
     return result;
 }
 
-internal void Win32InitDSound(HWND hwnd, uint32_t samplesPerSec, uint32_t bufferSize)
+internal void Win32InitDSound(HWND hwnd, uint32_t soundChannels, uint32_t samplesPerSec, uint32_t bufferSize)
 {
     // load library
     HMODULE dSoundLibrary = LoadLibraryA("dsound.dll");
@@ -154,7 +154,7 @@ internal void Win32InitDSound(HWND hwnd, uint32_t samplesPerSec, uint32_t buffer
             // just simple 2 ch stereo sound
             WAVEFORMATEX waveFormat {};
             waveFormat.wFormatTag = WAVE_FORMAT_PCM;
-            waveFormat.nChannels = gSoundChannels;
+            waveFormat.nChannels = static_cast<WORD>(soundChannels);
             waveFormat.nSamplesPerSec = samplesPerSec;
             waveFormat.wBitsPerSample = 16;
             waveFormat.nBlockAlign = (waveFormat.nChannels * waveFormat.wBitsPerSample) / 8;
@@ -466,6 +466,64 @@ internal LRESULT CALLBACK Win32WndProc(
     return lresult;
 }
 
+struct Win32SoundOutput
+{
+    int16_t toneVolume;
+    uint32_t soundChannels;
+    uint32_t toneHz;
+    uint32_t samplesPerSec;
+    uint32_t wavePeriod;
+    uint32_t halfWavePeriod;
+    uint32_t bytesPerSample;
+    uint32_t soundBufferSize;
+    uint32_t runningSampleIndex;
+};
+
+internal void Win32FillSoundBuffer(IDirectSoundBuffer *soundBuffer, Win32SoundOutput &soundOutput,
+                                   DWORD byteToLock, DWORD bytesToWrite)
+{
+    if (bytesToWrite == 0)
+    {
+        return;
+    }
+    // int16_t int16_t int16_t ...
+    // [left   right]  [left   right] ...
+    // since it's a circular buffer, the lock region might be consecutive, or chopped into 2 regions:
+    // one at the back of the buffer, the other at the front
+    constexpr int32_t maxRegions = 2;
+    void *regions[maxRegions] = {};
+    DWORD regionSizes[maxRegions] = {};
+                
+    if (SUCCEEDED(soundBuffer->Lock(
+            byteToLock,
+            bytesToWrite,
+            &regions[0], &regionSizes[0],
+            &regions[1], &regionSizes[1],
+            0)))
+    {
+        for (int32_t regionIndex = 0; regionIndex < maxRegions; ++regionIndex)
+        {
+            // TODO assert regionSizes are valid
+            assert(0 == (regionSizes[regionIndex] % (sizeof(int16_t) * soundOutput.soundChannels)));
+            // Just do a sine wave
+            int16_t *sampleOut = static_cast<int16_t*>(regions[regionIndex]);
+            for (DWORD sampleIndex = 0, sampleEnd = regionSizes[regionIndex] / soundOutput.bytesPerSample;
+                 sampleIndex < sampleEnd;
+                 ++sampleIndex)
+            {
+                float sineVal = sin(soundOutput.runningSampleIndex * PI_FLOAT / soundOutput.halfWavePeriod);
+                int16_t sampleVal = static_cast<int16_t>(sineVal * soundOutput.toneVolume);
+                // square wave
+                // int16_t sampleVal = ((soundOutput.runningSampleIndex / soundOutput.halfWavePeriod) % 2) ?
+                //         soundOutput.toneVolume : -soundOutput.toneVolume;
+                *sampleOut++ = sampleVal;
+                *sampleOut++ = sampleVal;
+                ++soundOutput.runningSampleIndex;
+            }
+        }
+        soundBuffer->Unlock(regions[0], regionSizes[0], regions[1], regionSizes[1]);
+    }
+}
 
 int32_t CALLBACK wWinMain(
     HINSTANCE hInstance,
@@ -505,19 +563,26 @@ int32_t CALLBACK wWinMain(
     int32_t blueOffset = 0;
     int32_t greenOffset = 0;
 
-    // sound test
-    int16_t toneVolume = 1000;
-    uint32_t toneHz = 261;
-    uint32_t samplesPerSec = 48000;
-    uint32_t squareWavePeriod = samplesPerSec / toneHz;
-    uint32_t halfSquareWavePeriod = squareWavePeriod / 2;
-    uint32_t bytesPerSample = sizeof(int16_t) * gSoundChannels;
-    uint32_t soundBufferSize = samplesPerSec * bytesPerSample * 2;
-    uint32_t runningSampleIndex = 0;
+    // test sound
+    Win32SoundOutput soundOutput {};
+    soundOutput.toneVolume = 1000;
+    soundOutput.soundChannels = 2;
+    soundOutput.toneHz = 261;
+    soundOutput.samplesPerSec = 48000;
+    soundOutput.wavePeriod = soundOutput.samplesPerSec / soundOutput.toneHz;
+    soundOutput.halfWavePeriod = soundOutput.wavePeriod / 2;
+    soundOutput.bytesPerSample = sizeof(int16_t) * soundOutput.soundChannels;
+    soundOutput.soundBufferSize = soundOutput.samplesPerSec * soundOutput.bytesPerSample * 2; // 2 sec buffer
+    soundOutput.runningSampleIndex = 0;
 
     // create buffer for 2 sec
-    Win32InitDSound(hwnd, samplesPerSec, soundBufferSize);
-    bool32 soundIsPlaying = false;
+    Win32InitDSound(hwnd, soundOutput.soundChannels, soundOutput.samplesPerSec, soundOutput.soundBufferSize);
+    if (gSoundBuffer)
+    {
+        // fill the whole buffer and started playing sound.
+        Win32FillSoundBuffer(gSoundBuffer, soundOutput, 0, soundOutput.soundBufferSize);
+        gSoundBuffer->Play(0, 0, DSBPLAY_LOOPING);
+    }
 
     gRunning = true;
     while (gRunning)
@@ -613,63 +678,28 @@ int32_t CALLBACK wWinMain(
         if (gSoundBuffer)
         {
             DWORD playCursor;
-            if (SUCCEEDED(gSoundBuffer->GetCurrentPosition(&playCursor, nullptr)))
+            DWORD writeCursor;
+            if (SUCCEEDED(gSoundBuffer->GetCurrentPosition(&playCursor, &writeCursor)))
             {
                 // fill the buffer till the play cursor
-                DWORD byteToLock = (runningSampleIndex * bytesPerSample) % soundBufferSize;
+                DWORD byteToLock = (soundOutput.runningSampleIndex * soundOutput.bytesPerSample)
+                        % soundOutput.soundBufferSize;
                 DWORD bytesToWrite;
                 if (byteToLock == playCursor)
                 {
-                    // when it first starts up
-                    bytesToWrite = soundBufferSize;
+                    // this happens when we write the full buffer but player cursor hasn't moved.
+                    // so, write nothing or it'll screw up.
+                    bytesToWrite = 0;
                 }
                 else if (byteToLock > playCursor)
                 {
-                    bytesToWrite = soundBufferSize - byteToLock + playCursor;
+                    bytesToWrite = soundOutput.soundBufferSize - byteToLock + playCursor;
                 }
                 else
                 {
                     bytesToWrite = playCursor - byteToLock;
                 }
-
-                // int16_t int16_t int16_t ...
-                // [left   right]  [left   right] ...
-                constexpr int32_t maxRegions = 2;
-                void *regions[maxRegions] = {};
-                DWORD regionSizes[maxRegions] = {};
-                
-                if (SUCCEEDED(gSoundBuffer->Lock(
-                        byteToLock,
-                        bytesToWrite,
-                        &regions[0], &regionSizes[0],
-                        &regions[1], &regionSizes[1],
-                        0)))
-                {
-                    for (int32_t regionIndex = 0; regionIndex < maxRegions; ++regionIndex)
-                    {
-                        // TODO assert regionSizes are valid
-                        assert(0 == (regionSizes[regionIndex] % (sizeof(int16_t) * gSoundChannels)));
-                        // Just do a square wave
-                        int16_t *sampleOut = static_cast<int16_t*>(regions[regionIndex]);
-                        for (DWORD sampleIndex = 0, sampleEnd = regionSizes[regionIndex] / bytesPerSample;
-                             sampleIndex < sampleEnd;
-                             ++sampleIndex)
-                        {
-                            int16_t sampleVal = ((runningSampleIndex / halfSquareWavePeriod) % 2) ?
-                                    toneVolume : -toneVolume;
-                            *sampleOut++ = sampleVal;
-                            *sampleOut++ = sampleVal;
-                            ++runningSampleIndex;
-                        }
-                    }
-                    gSoundBuffer->Unlock(regions[0], regionSizes[0], regions[1], regionSizes[1]);
-                }
-            }
-
-            if (!soundIsPlaying)
-            {
-                gSoundBuffer->Play(0, 0, DSBPLAY_LOOPING);
-                soundIsPlaying = true;
+                Win32FillSoundBuffer(gSoundBuffer, soundOutput, byteToLock, bytesToWrite);
             }
         }        
         HDC dvcCtx = GetDC(hwnd);
