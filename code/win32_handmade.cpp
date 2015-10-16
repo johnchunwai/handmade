@@ -43,9 +43,10 @@ internal float Win32GetXInputStickNormalizedDeadzone(float magnitudeDeadzone)
 {
     return magnitudeDeadzone / std::sqrt(gXInputMaxStickVal * gXInputMaxStickVal * 2.0f);
 }
-global_variable float gXInputLeftThumbNormalizedDeadzone =
+global_variable const float gXInputLeftThumbNormalizedDeadzone =
         Win32GetXInputStickNormalizedDeadzone(XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-// constexpr float gXInputRightThumbNormalizedDeadzone(XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
+global_variable const float gXInputRightThumbNormalizedDeadzone =
+        Win32GetXInputStickNormalizedDeadzone(XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
 
 // XInputGetState
 #define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_STATE*)
@@ -459,7 +460,7 @@ internal LRESULT CALLBACK Win32WndProc(
 
     default:
         {
-            lresult = DefWindowProcW (hwnd, msg, wparam, lparam);
+            lresult = DefWindowProcW(hwnd, msg, wparam, lparam);
         }
         break;
     }
@@ -468,16 +469,21 @@ internal LRESULT CALLBACK Win32WndProc(
 
 struct Win32SoundOutput
 {
+    uint32_t runningSampleIndex;
+    float sine_t;
     int16_t toneVolume;
     uint32_t soundChannels;
     uint32_t toneHz;
     uint32_t samplesPerSec;
+    uint32_t secToBuffer;
+
+    // calculated values
+    uint32_t latencySampleCount;  // to minimize delay when we want to change the sound
     uint32_t wavePeriod;
-    uint32_t halfWavePeriod;
     uint32_t bytesPerSample;
     uint32_t soundBufferSize;
-    uint32_t runningSampleIndex;
 };
+
 
 internal void Win32FillSoundBuffer(IDirectSoundBuffer *soundBuffer, Win32SoundOutput &soundOutput,
                                    DWORD byteToLock, DWORD bytesToWrite)
@@ -511,13 +517,15 @@ internal void Win32FillSoundBuffer(IDirectSoundBuffer *soundBuffer, Win32SoundOu
                  sampleIndex < sampleEnd;
                  ++sampleIndex)
             {
-                float sineVal = sin(soundOutput.runningSampleIndex * PI_FLOAT / soundOutput.halfWavePeriod);
+                float sineVal = sin(soundOutput.sine_t);
                 int16_t sampleVal = static_cast<int16_t>(sineVal * soundOutput.toneVolume);
                 // square wave
                 // int16_t sampleVal = ((soundOutput.runningSampleIndex / soundOutput.halfWavePeriod) % 2) ?
                 //         soundOutput.toneVolume : -soundOutput.toneVolume;
                 *sampleOut++ = sampleVal;
                 *sampleOut++ = sampleVal;
+                // advance sine t by 1 sample
+                soundOutput.sine_t += 1.0f * 2.0f * PI_FLOAT / soundOutput.wavePeriod;
                 ++soundOutput.runningSampleIndex;
             }
         }
@@ -565,22 +573,26 @@ int32_t CALLBACK wWinMain(
 
     // test sound
     Win32SoundOutput soundOutput {};
+    soundOutput.runningSampleIndex = 0;
+    soundOutput.sine_t = 0.0f;
     soundOutput.toneVolume = 1000;
     soundOutput.soundChannels = 2;
-    soundOutput.toneHz = 261;
+    soundOutput.toneHz = 512;
     soundOutput.samplesPerSec = 48000;
+    soundOutput.secToBuffer = 2;
+    soundOutput.latencySampleCount = soundOutput.samplesPerSec / 15; // latency = 1/15th sec
     soundOutput.wavePeriod = soundOutput.samplesPerSec / soundOutput.toneHz;
-    soundOutput.halfWavePeriod = soundOutput.wavePeriod / 2;
     soundOutput.bytesPerSample = sizeof(int16_t) * soundOutput.soundChannels;
-    soundOutput.soundBufferSize = soundOutput.samplesPerSec * soundOutput.bytesPerSample * 2; // 2 sec buffer
-    soundOutput.runningSampleIndex = 0;
+    soundOutput.soundBufferSize = soundOutput.samplesPerSec * soundOutput.bytesPerSample
+            * soundOutput.secToBuffer; // 2 sec buffer
 
     // create buffer for 2 sec
     Win32InitDSound(hwnd, soundOutput.soundChannels, soundOutput.samplesPerSec, soundOutput.soundBufferSize);
     if (gSoundBuffer)
     {
         // fill the whole buffer and started playing sound.
-        Win32FillSoundBuffer(gSoundBuffer, soundOutput, 0, soundOutput.soundBufferSize);
+        Win32FillSoundBuffer(gSoundBuffer, soundOutput, 0,
+                             soundOutput.latencySampleCount * soundOutput.bytesPerSample);
         gSoundBuffer->Play(0, 0, DSBPLAY_LOOPING);
     }
 
@@ -625,15 +637,19 @@ int32_t CALLBACK wWinMain(
                 // bool32 back = pad.wButtons & XINPUT_GAMEPAD_BACK;
                 // bool32 leftShoulder = pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
                 // bool32 rightShoulder = pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
-                // bool32 aButton = pad.wButtons & XINPUT_GAMEPAD_A;
+                bool32 aButton = pad.wButtons & XINPUT_GAMEPAD_A;
                 // bool32 bButton = pad.wButtons & XINPUT_GAMEPAD_B;
                 bool32 xButton = pad.wButtons & XINPUT_GAMEPAD_X;
                 bool32 yButton = pad.wButtons & XINPUT_GAMEPAD_Y;
 
-                auto stickXY = Win32NormalizeXInputStickMagnitude(pad.sThumbLX, pad.sThumbLY,
+                auto lStickXY = Win32NormalizeXInputStickMagnitude(pad.sThumbLX, pad.sThumbLY,
                                                                   gXInputLeftThumbNormalizedDeadzone);
-                float lStickX = stickXY.first;
-                float lStickY = stickXY.second;
+                float lStickX = lStickXY.first;
+                float lStickY = lStickXY.second;
+                auto rStickXY = Win32NormalizeXInputStickMagnitude(pad.sThumbRX, pad.sThumbRY,
+                                                                  gXInputRightThumbNormalizedDeadzone);
+                // float rStickX = rStickXY.first;
+                float rStickY = rStickXY.second;
                 // std::stringstream ss;
                 // ss << "stickx = " << lStickX << " sticky=" << lStickY << std::endl;
                 // OutputDebugStringA(ss.str().c_str());
@@ -655,7 +671,6 @@ int32_t CALLBACK wWinMain(
                     vibration.wLeftMotorSpeed = 65535;
                     XInputSetState(controllerIndex, &vibration);
                 }
-                
                 if (yButton)
                 {
                     greenOffset += 2;
@@ -665,6 +680,14 @@ int32_t CALLBACK wWinMain(
                     vibration.wRightMotorSpeed = 10000;
                     XInputSetState(controllerIndex, &vibration);
                 }
+                if (aButton)
+                {
+                    XINPUT_VIBRATION vibration {};
+                    XInputSetState(controllerIndex, &vibration);
+                }
+
+                soundOutput.toneHz = 512 + static_cast<int16_t>(256.0f * rStickY);
+                soundOutput.wavePeriod = soundOutput.samplesPerSec / soundOutput.toneHz;
             }
             else
             {
@@ -684,20 +707,18 @@ int32_t CALLBACK wWinMain(
                 // fill the buffer till the play cursor
                 DWORD byteToLock = (soundOutput.runningSampleIndex * soundOutput.bytesPerSample)
                         % soundOutput.soundBufferSize;
+
+                // this may be dangerous! overwriting part of memory between play cursor and write cursor
+                DWORD targetToCursor = (playCursor + soundOutput.latencySampleCount
+                                        * soundOutput.bytesPerSample) % soundOutput.soundBufferSize;
                 DWORD bytesToWrite;
-                if (byteToLock == playCursor)
+                if (byteToLock > targetToCursor)
                 {
-                    // this happens when we write the full buffer but player cursor hasn't moved.
-                    // so, write nothing or it'll screw up.
-                    bytesToWrite = 0;
-                }
-                else if (byteToLock > playCursor)
-                {
-                    bytesToWrite = soundOutput.soundBufferSize - byteToLock + playCursor;
+                    bytesToWrite = soundOutput.soundBufferSize - byteToLock + targetToCursor;
                 }
                 else
                 {
-                    bytesToWrite = playCursor - byteToLock;
+                    bytesToWrite = targetToCursor - byteToLock;
                 }
                 Win32FillSoundBuffer(gSoundBuffer, soundOutput, byteToLock, bytesToWrite);
             }
