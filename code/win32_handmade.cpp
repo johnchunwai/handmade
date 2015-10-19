@@ -5,8 +5,10 @@
 #include <xinput.h>
 #include <mmsystem.h>
 #include <dsound.h>
+#include <intrin.h>
 #include <cassert>
 #include <cstdint>
+#include <cinttypes>
 #include <cmath>
 
 #include <utility>
@@ -169,7 +171,7 @@ internal void win32_init_direct_sound(
             {
                 // create a primary buffer (object that mixes all sounds)
                 DSBUFFERDESC buffer_desc {};
-                buffer_desc.dwSize = sizeof(DSBUFFERDESC);
+                buffer_desc.dwSize = sizeof(buffer_desc);
                 buffer_desc.dwFlags = DSBCAPS_PRIMARYBUFFER;  // DSBCAPS_GLOBALFOCUS?
                 // buffer_desc.dwBufferBytes = 0;
                 // buffer_desc.lpwfxFormat = nullptr;
@@ -201,7 +203,7 @@ internal void win32_init_direct_sound(
             // create a 2ndary buffer (that holds the sound data)
             // this can be done independent of the above failures
             DSBUFFERDESC buffer_desc {};
-            buffer_desc.dwSize = sizeof(DSBUFFERDESC);
+            buffer_desc.dwSize = sizeof(buffer_desc);
             buffer_desc.dwFlags = DSBCAPS_GETCURRENTPOSITION2;  // DSBCAPS_GLOBALFOCUS?
             buffer_desc.dwBufferBytes = buffer_size;
             buffer_desc.lpwfxFormat = &wave_fmt;
@@ -271,7 +273,7 @@ internal void render_weird_gradient(Win32OffscreenBuffer *buffer, int32_t blue_o
     }
 }
 
-internal void Win32ResizeBackBuffer(Win32OffscreenBuffer *buffer, int32_t width, int32_t height)
+internal void win32_resize_back_buffer(Win32OffscreenBuffer *buffer, int32_t width, int32_t height)
 {
     // TODO: bulletproof this.
     // maybe don't free first, free after.
@@ -285,7 +287,7 @@ internal void Win32ResizeBackBuffer(Win32OffscreenBuffer *buffer, int32_t width,
     buffer->width = width;
     buffer->height = height;
 
-    buffer->info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    buffer->info.bmiHeader.biSize = sizeof(buffer->info.bmiHeader);
     buffer->info.bmiHeader.biPlanes = 1;
     buffer->info.bmiHeader.biBitCount = 32;  // no alpha, the 8-bit padding is for alignment
     buffer->info.bmiHeader.biCompression = BI_RGB;
@@ -549,11 +551,17 @@ int32_t CALLBACK wWinMain(
     LPWSTR,     // not using lpCmdLine
     int)        // not using nCmdShow
 {
+    LARGE_INTEGER perf_count_freq_result;
+    QueryPerformanceFrequency(&perf_count_freq_result);
+    int64_t perf_count_freq = perf_count_freq_result.QuadPart;
+    
     win32_load_xinput();
-    Win32ResizeBackBuffer(&g_back_buffer, 1280, 720);
+    
+    win32_resize_back_buffer(&g_back_buffer, 1280, 720);
+    
     wchar_t *wnd_class_name = L"Handmade Hero Window Class";
     WNDCLASSEXW wnd_class = {};  // c++11 aggregate initialization to zero the struct
-    wnd_class.cbSize = sizeof(WNDCLASSEX);
+    wnd_class.cbSize = sizeof(wnd_class);
     wnd_class.style = CS_HREDRAW | CS_VREDRAW;
     wnd_class.lpfnWndProc = win32_wnd_proc;
     wnd_class.hInstance = window_instance;
@@ -608,6 +616,11 @@ int32_t CALLBACK wWinMain(
     }
 
     g_running = true;
+    
+    uint64_t last_cycle_count = __rdtsc();
+    LARGE_INTEGER last_perf_counter;
+    QueryPerformanceCounter(&last_perf_counter);
+    
     while (g_running)
     {
         MSG msg;
@@ -738,6 +751,25 @@ int32_t CALLBACK wWinMain(
         Win32WindowDimension dimension = win32_get_window_dimension(hwnd);
         win32_display_offscreen_buffer(g_back_buffer, device_context, dimension.width, dimension.height);
         ReleaseDC(hwnd, device_context);
+
+        uint64_t end_cycle_count = __rdtsc();
+        LARGE_INTEGER end_perf_counter;
+        QueryPerformanceCounter(&end_perf_counter);
+
+        int64_t cycles_elapsed = end_cycle_count - last_cycle_count; // use signed, as it may go backward
+        int64_t counter_elapsed = end_perf_counter.QuadPart - last_perf_counter.QuadPart;
+        float mega_cycles_per_frame = static_cast<float>(cycles_elapsed) / 1000000.0f;
+        float ms_per_frame = 1000.0f * static_cast<float>(counter_elapsed)
+                / static_cast<float>(perf_count_freq);
+        float fps = static_cast<float>(perf_count_freq) / static_cast<float>(counter_elapsed);
+
+        char buf[256];
+        sprintf_s(buf, sizeof(buf), "%.2f Mc/f, %.2f ms/f, %.2f fps\n",
+                  mega_cycles_per_frame, ms_per_frame, fps);
+        OutputDebugStringA(buf);
+        
+        last_perf_counter = end_perf_counter;
+        last_cycle_count = end_cycle_count;
     }
     
     // MessageBoxW(nullptr, L"hello world", L"hello", MB_OK | MB_ICONINFORMATION);
