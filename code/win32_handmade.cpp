@@ -1,11 +1,24 @@
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
+/*
+  TODO: Not the final platform layer.
 
-#include <windows.h>
-#include <xinput.h>
-#include <mmsystem.h>
-#include <dsound.h>
-#include <intrin.h>
+  - saved game locations
+  - getting a handle to our own exe file
+  - asset loading path
+  - threading
+  - raw input (support for multiple keyboards)
+  - sleep/timeBeginPeriod
+  - ClipCursor() (for multimonitor support)
+  - fullscreen support
+  - WM_SETCURSOR (control cursor visibility)
+  - QueryCancelAutoplay
+  - WM_ACTIVATEAPP
+  - blit speed improvements (BitBlt)
+  - hardware acceleration (OpenGL or Direct3D or both??)
+  - GetKeyboardLayout (for French keyboards, international WASD support)
+
+  Just a partial list of stuff!
+ */
+
 #include <cassert>
 #include <cstdint>
 #include <cinttypes>
@@ -20,6 +33,25 @@
 #define internal static
 
 typedef int32_t bool32;
+
+// constants
+constexpr float kPiFloat = 3.14159265359f;
+constexpr float kEpsilonFloat = 0.00001f;
+
+#include "handmade.cpp"
+
+
+/*
+  Platform specific stuff below
+*/
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+
+#include <windows.h>
+#include <xinput.h>
+#include <mmsystem.h>
+#include <dsound.h>
+#include <intrin.h>
 
 struct Win32OffscreenBuffer
 {
@@ -37,8 +69,6 @@ struct Win32WindowDimension
 };
 
 // constants
-global_variable const float kPiFloat = std::atan(1.0f) * 4.0f;
-constexpr float kEpsilonFloat = 0.00001f;
 constexpr float kXInputMaxStickVal = 32767.0f;
 // constexpr float kXInputMinStickVal = -32768;
 
@@ -242,35 +272,6 @@ internal void win32_debug_print_last_error()
                    nullptr);
     OutputDebugStringW(msg);
     LocalFree(msg);
-}
-
-internal void render_weird_gradient(Win32OffscreenBuffer *buffer, int32_t blue_offset, int32_t green_offset)
-{
-    // draw something
-    uint8_t *row = static_cast<uint8_t*>(buffer->memory);
-    for (int32_t y = 0; y < buffer->height; ++y)
-    {
-        uint32_t* pixel = reinterpret_cast<uint32_t*>(row);
-        for (int32_t x = 0; x < buffer->width; ++x)
-        {
-            /*
-              pixel in memory:
-              BITMAPINFOHEADER's biBitCount mentions that order is BB GG RR XX.
-
-              Since we're in little endian (least sig byte in lower addr),
-              32bit int representation is 0xXXRRGGBB
-
-              Memory:    BB GG RR xx
-              Register:  xx RR GG BB
-            */
-            uint8_t red = 0;
-            uint8_t green = static_cast<uint8_t>(y + green_offset);
-            uint8_t blue = static_cast<uint8_t>(x + blue_offset);
-            // little endian - least sig val on smallest addr
-            *pixel++ = (red << 16) | (green << 8) | blue;
-        }
-        row += buffer->pitch;
-    }
 }
 
 internal void win32_resize_back_buffer(Win32OffscreenBuffer *buffer, int32_t width, int32_t height)
@@ -514,7 +515,6 @@ internal void win32_fill_sound_buffer(IDirectSoundBuffer *sound_buffer, Win32Sou
     {
         for (int32_t region_index = 0; region_index < max_regions; ++region_index)
         {
-            // TODO assert region_sizes are valid
             assert(0 == (region_sizes[region_index] % (sizeof(int16_t) * sound_output->num_sound_ch)));
             // Just do a sine wave
             int16_t *sample_out = static_cast<int16_t*>(regions[region_index]);
@@ -719,7 +719,12 @@ int32_t CALLBACK wWinMain(
             }
         }
 
-        render_weird_gradient(&g_back_buffer, blue_offset, green_offset);
+        GameOffscreenBuffer buffer {};
+        buffer.width = g_back_buffer.width;
+        buffer.height = g_back_buffer.height;
+        buffer.pitch = g_back_buffer.pitch;
+        buffer.memory = g_back_buffer.memory;
+        game_update_and_render(&buffer, blue_offset, green_offset);
 
         // DirectSound output test
         if (g_sound_buffer)
