@@ -14,7 +14,16 @@ struct GameOffscreenBuffer
     void *memory;
 };
 
-internal void game_update_and_render(GameOffscreenBuffer * buffer, int32_t blue_offset, int32_t green_offset);
+struct GameSoundBuffer
+{
+    int16_t *samples;
+    uint32_t sample_count;
+    uint32_t samples_per_sec;
+};
+
+internal void game_update_and_render(GameOffscreenBuffer * buffer,
+                                     int32_t blue_offset, int32_t green_offset,
+                                     GameSoundBuffer *sound_buffer, uint32_t tone_hz);
 
 /*
   TODO: Services that the platform layer provides to the game.
