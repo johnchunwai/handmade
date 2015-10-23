@@ -52,8 +52,9 @@ constexpr float kEpsilonFloat = 0.00001f;
 #include <mmsystem.h>
 #include <dsound.h>
 #include <intrin.h>
+#include "handmade.h"
 
-struct Win32OffscreenBuffer
+struct win32_offscreen_buffer
 {
     BITMAPINFO info;
     int32_t width;
@@ -62,7 +63,7 @@ struct Win32OffscreenBuffer
     void *memory;
 };
 
-struct Win32WindowDimension
+struct win32_window_dimension
 {
     int32_t width;
     int32_t height;
@@ -74,7 +75,7 @@ constexpr float kXInputMaxStickVal = 32767.0f;
 
 // TODO: global for now
 global_variable bool32 g_running = false;
-global_variable Win32OffscreenBuffer g_back_buffer {};
+global_variable win32_offscreen_buffer g_back_buffer {};
 global_variable IDirectSoundBuffer *g_sound_buffer = nullptr;
 
 internal float win32_get_xinput_stick_normalized_deadzone(float unnormalized_deadzone)
@@ -117,7 +118,7 @@ internal void win32_load_xinput()
         "xinput1_3.dll",
         "xinput9_1_0.dll"
     };
-    for (auto &xinput_dll : xinput_dlls)
+    for (auto xinput_dll : xinput_dlls)
     {
         HMODULE xinput_lib = LoadLibraryA(xinput_dll);
         if (xinput_lib)
@@ -165,12 +166,13 @@ internal std::pair<float, float> win32_xinput_thumb_resolve_deadzone_normalize(
     return std::make_pair(x, y);
 }
 
-internal Win32WindowDimension win32_get_window_dimension(HWND hwnd)
+internal win32_window_dimension win32_get_window_dimension(HWND hwnd)
 {
     RECT window_rect;
     // rc.top and rc.left are always 0
     GetClientRect(hwnd, &window_rect);
-    Win32WindowDimension result {window_rect.right - window_rect.left, window_rect.bottom - window_rect.top};
+    win32_window_dimension result {window_rect.right - window_rect.left,
+                window_rect.bottom - window_rect.top};
     return result;
 }
 
@@ -274,7 +276,7 @@ internal void win32_debug_print_last_error()
     LocalFree(msg);
 }
 
-internal void win32_resize_back_buffer(Win32OffscreenBuffer *buffer, int32_t width, int32_t height)
+internal void win32_resize_back_buffer(win32_offscreen_buffer *buffer, int32_t width, int32_t height)
 {
     // TODO: bulletproof this.
     // maybe don't free first, free after.
@@ -304,15 +306,15 @@ internal void win32_resize_back_buffer(Win32OffscreenBuffer *buffer, int32_t wid
     assert(buffer->memory);
 }
 
-internal void win32_display_offscreen_buffer(const Win32OffscreenBuffer &buffer,
+internal void win32_display_offscreen_buffer(const win32_offscreen_buffer *buffer,
                                              HDC device_context, int32_t width, int32_t height)
 {
     // Setting to stretch blt mode to prevent artifacts when shrink blt.
     SetStretchBltMode(device_context, STRETCH_DELETESCANS);
     int32_t blt_result = StretchDIBits(device_context,
                                        0, 0, width, height,
-                                       0, 0, buffer.width, buffer.height,
-                                       buffer.memory, &buffer.info,
+                                       0, 0, buffer->width, buffer->height,
+                                       buffer->memory, &buffer->info,
                                        DIB_RGB_COLORS, SRCCOPY);
     assert(blt_result);
 }
@@ -458,8 +460,8 @@ internal LRESULT CALLBACK win32_wnd_proc(
         {
             PAINTSTRUCT paint;
             HDC device_context = BeginPaint(hwnd, &paint);
-            Win32WindowDimension dimension = win32_get_window_dimension(hwnd);
-            win32_display_offscreen_buffer(g_back_buffer, device_context, dimension.width, dimension.height);
+            win32_window_dimension dimension = win32_get_window_dimension(hwnd);
+            win32_display_offscreen_buffer(&g_back_buffer, device_context, dimension.width, dimension.height);
             EndPaint(hwnd, &paint);
         }
         break;
@@ -473,24 +475,6 @@ internal LRESULT CALLBACK win32_wnd_proc(
     return lresult;
 }
 
-struct Win32SoundOutput
-{
-    uint32_t running_sample_index;
-    float sine_t;
-    int16_t tone_volume;
-    uint32_t num_sound_ch;
-    uint32_t tone_hz;
-    uint32_t samples_per_sec;
-    uint32_t sec_to_buffer;
-
-    // calculated values
-    uint32_t latency_sample_count;  // to minimize delay when we want to change the sound
-    uint32_t wave_period_sample_count;
-    uint32_t bytes_per_sample;
-    uint32_t sound_buffer_size;
-};
-
-
 internal void win32_clear_sound_buffer(IDirectSoundBuffer *sound_buffer)
 {
     void *region = nullptr;
@@ -502,7 +486,8 @@ internal void win32_clear_sound_buffer(IDirectSoundBuffer *sound_buffer)
     }
 }
 
-internal void win32_fill_sound_buffer(Win32SoundOutput *sound_output, GameSoundBuffer &source_buffer,
+internal void win32_fill_sound_buffer(win32_sound_output *sound_output,
+                                      const game_sound_buffer *source_buffer,
                                       DWORD byte_to_lock, DWORD bytes_to_write)
 {
     if (bytes_to_write == 0)
@@ -516,8 +501,8 @@ internal void win32_fill_sound_buffer(Win32SoundOutput *sound_output, GameSoundB
     constexpr int32_t max_regions = 2;
     void *regions[max_regions] = {};
     DWORD region_sizes[max_regions] = {};
-    // int16_t* samples = source_buffer.samples;
-    uint8_t *samples = reinterpret_cast<uint8_t*>(source_buffer.samples);
+    // int16_t* samples = source_buffer->samples;
+    uint8_t *samples = reinterpret_cast<uint8_t*>(source_buffer->samples);
     
     if (SUCCEEDED(g_sound_buffer->Lock(
             byte_to_lock,
@@ -547,6 +532,15 @@ internal void win32_fill_sound_buffer(Win32SoundOutput *sound_output, GameSoundB
         }
         g_sound_buffer->Unlock(regions[0], region_sizes[0], regions[1], region_sizes[1]);
     }
+}
+
+internal void win32_process_xinput_digital_button(game_button_state *new_state,
+                                                  const game_button_state *old_state,
+                                                  const XINPUT_GAMEPAD *pad, uint32_t xinput_button_bit)
+{
+    new_state->ended_down = pad->wButtons & xinput_button_bit;
+    int32_t transition_amount = (old_state->ended_down != new_state->ended_down) ? 1 : 0;
+    new_state->num_half_transition = old_state->num_half_transition + transition_amount;
 }
 
 int32_t CALLBACK wWinMain(
@@ -589,21 +583,13 @@ int32_t CALLBACK wWinMain(
         return 0;
     }
 
-    // graphics test
-    int32_t blue_offset = 0;
-    int32_t green_offset = 0;
-
     // test sound
-    Win32SoundOutput sound_output {};
+    win32_sound_output sound_output {};
     sound_output.running_sample_index = 0;
-    sound_output.sine_t = 0.0f;
-    sound_output.tone_volume = 1000;
     sound_output.num_sound_ch = 2;
-    sound_output.tone_hz = 512;
     sound_output.samples_per_sec = 48000;
     sound_output.sec_to_buffer = 2;
     sound_output.latency_sample_count = sound_output.samples_per_sec / 15; // latency = 1/15th sec
-    sound_output.wave_period_sample_count = sound_output.samples_per_sec / sound_output.tone_hz;
     sound_output.bytes_per_sample = sizeof(int16_t) * sound_output.num_sound_ch;
     sound_output.sound_buffer_size = sound_output.samples_per_sec * sound_output.bytes_per_sample
             * sound_output.sec_to_buffer; // 2 sec buffer
@@ -624,6 +610,11 @@ int32_t CALLBACK wWinMain(
                                                      MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
     }
 
+    // input
+    game_input input[2] = {};
+    game_input *new_input = &input[0];
+    game_input *old_input = &input[1];
+    
     g_running = true;
     
     uint64_t last_cycle_count = __rdtsc();
@@ -651,76 +642,86 @@ int32_t CALLBACK wWinMain(
             break;
         }
 
-        for (DWORD controller_index = 0; controller_index< XUSER_MAX_COUNT; ++controller_index)
+        
+
+        constexpr uint32_t max_controller_count = std::min((uint32_t)XUSER_MAX_COUNT,
+                                                           game_input::max_controller_count);
+        for (DWORD controller_index = 0; controller_index < max_controller_count; ++controller_index)
         {
             XINPUT_STATE controller_state {};
             // Simply get the state of the controller from XInput.
             if (ERROR_SUCCESS == XInputGetState(controller_index, &controller_state))
             {
                 // Controller is connected
+                game_controller_input *new_controller = &new_input->controllers[controller_index];
+                const game_controller_input *old_controller = &old_input->controllers[controller_index];
                 // dwPacketNumber indicates whether there have been state changes
                 controller_state.dwPacketNumber;
-                XINPUT_GAMEPAD &pad = controller_state.Gamepad;
+                const XINPUT_GAMEPAD *pad = &controller_state.Gamepad;
                 // these are what we care about
-                // bool32 up = pad.wButtons & XINPUT_GAMEPAD_DPAD_UP;
-                // bool32 down = pad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
-                // bool32 left = pad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
-                // bool32 right = pad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
-                // bool32 start = pad.wButtons & XINPUT_GAMEPAD_START;
-                // bool32 back = pad.wButtons & XINPUT_GAMEPAD_BACK;
-                // bool32 left_shoulder = pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
-                // bool32 right_shoulder = pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
-                bool32 a_button = pad.wButtons & XINPUT_GAMEPAD_A;
-                // bool32 b_button = pad.wButtons & XINPUT_GAMEPAD_B;
-                bool32 x_button = pad.wButtons & XINPUT_GAMEPAD_X;
-                bool32 y_button = pad.wButtons & XINPUT_GAMEPAD_Y;
+                bool32 up = pad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
+                bool32 down = pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
+                bool32 left = pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
+                bool32 right = pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
+                // bool32 start = pad->wButtons & XINPUT_GAMEPAD_START;
+                // bool32 back = pad->wButtons & XINPUT_GAMEPAD_BACK;
+                // bool32 left_shoulder = pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
+                // bool32 right_shoulder = pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
+                
+                win32_process_xinput_digital_button(&new_controller->a,
+                                                    &old_controller->a,
+                                                    pad, XINPUT_GAMEPAD_A);
+                win32_process_xinput_digital_button(&new_controller->b,
+                                                    &old_controller->b,
+                                                    pad, XINPUT_GAMEPAD_B);
+                win32_process_xinput_digital_button(&new_controller->x,
+                                                    &old_controller->x,
+                                                    pad, XINPUT_GAMEPAD_X);
+                win32_process_xinput_digital_button(&new_controller->y,
+                                                    &old_controller->a,
+                                                    pad, XINPUT_GAMEPAD_Y);
+                win32_process_xinput_digital_button(&new_controller->left_shoulder,
+                                                    &old_controller->left_shoulder,
+                                                    pad, XINPUT_GAMEPAD_LEFT_SHOULDER);
+                win32_process_xinput_digital_button(&new_controller->right_shoulder,
+                                                    &old_controller->right_shoulder,
+                                                    pad, XINPUT_GAMEPAD_RIGHT_SHOULDER);
+                
+                // bool32 a_button = pad->wButtons & XINPUT_GAMEPAD_A;
+                // bool32 b_button = pad->wButtons & XINPUT_GAMEPAD_B;
+                // bool32 x_button = pad->wButtons & XINPUT_GAMEPAD_X;
+                // bool32 y_button = pad->wButtons & XINPUT_GAMEPAD_Y;
 
                 auto left_stick_xy = win32_xinput_thumb_resolve_deadzone_normalize(
-                            pad.sThumbLX, pad.sThumbLY, g_xinput_left_thumb_normalized_deadzone);
+                            pad->sThumbLX, pad->sThumbLY, g_xinput_left_thumb_normalized_deadzone);
                 float left_stick_x = left_stick_xy.first;
                 float left_stick_y = left_stick_xy.second;
                 auto right_stick_xy = win32_xinput_thumb_resolve_deadzone_normalize(
-                    pad.sThumbRX, pad.sThumbRY, g_xinput_right_thumb_normalized_deadzone);
-                // float right_stick_x = right_stick_xy.first;
+                    pad->sThumbRX, pad->sThumbRY, g_xinput_right_thumb_normalized_deadzone);
+                float right_stick_x = right_stick_xy.first;
                 float right_stick_y = right_stick_xy.second;
                 // std::stringstream ss;
                 // ss << "stickx = " << left_stick_x << " sticky=" << left_stick_y << std::endl;
                 // OutputDebugStringA(ss.str().c_str());
+                new_controller->is_analog = true;
 
-                if (left_stick_x > kEpsilonFloat || left_stick_x < -kEpsilonFloat)
-                {
-                    blue_offset -= static_cast<int>(left_stick_x * 10.0f);
-                }
-                if (left_stick_y > kEpsilonFloat || left_stick_y < -kEpsilonFloat)
-                {
-                    green_offset += static_cast<int>(left_stick_y * 5.0f);
-                }
-                if (x_button)
-                {
-                    blue_offset += 5;
+                new_controller->left_stick.start_x = old_controller->left_stick.end_x;
+                new_controller->left_stick.end_x = left_stick_x;
+                new_controller->left_stick.min_x = new_controller->left_stick.max_x
+                        = new_controller->left_stick.end_x;
+                new_controller->left_stick.start_y = old_controller->left_stick.end_y;
+                new_controller->left_stick.end_y = left_stick_y;
+                new_controller->left_stick.min_y = new_controller->left_stick.max_y
+                        = new_controller->left_stick.end_y;
 
-                    // Add some vibration left motor
-                    XINPUT_VIBRATION vibration {};
-                    vibration.wLeftMotorSpeed = 65535;
-                    XInputSetState(controller_index, &vibration);
-                }
-                if (y_button)
-                {
-                    green_offset += 2;
-
-                    // Add some vibration right motor
-                    XINPUT_VIBRATION vibration {};
-                    vibration.wRightMotorSpeed = 10000;
-                    XInputSetState(controller_index, &vibration);
-                }
-                if (a_button)
-                {
-                    XINPUT_VIBRATION vibration {};
-                    XInputSetState(controller_index, &vibration);
-                }
-
-                sound_output.tone_hz = 512 + static_cast<int16_t>(256.0f * right_stick_y);
-                sound_output.wave_period_sample_count = sound_output.samples_per_sec / sound_output.tone_hz;
+                new_controller->right_stick.start_x = old_controller->right_stick.end_x;
+                new_controller->right_stick.end_x = right_stick_x;
+                new_controller->right_stick.min_x = new_controller->right_stick.max_x
+                        = new_controller->right_stick.end_x;
+                new_controller->right_stick.start_y = old_controller->right_stick.end_y;
+                new_controller->right_stick.end_y = right_stick_y;
+                new_controller->right_stick.min_y = new_controller->right_stick.max_y
+                        = new_controller->right_stick.end_y;
             }
             else
             {
@@ -756,7 +757,7 @@ int32_t CALLBACK wWinMain(
             }
         }
 
-        GameSoundBuffer game_sound_buffer {};
+        game_sound_buffer game_sound_buffer {};
         if (bytes_to_write > 0)
         {
             game_sound_buffer.samples = samples; 
@@ -764,23 +765,28 @@ int32_t CALLBACK wWinMain(
             game_sound_buffer.samples_per_sec = sound_output.samples_per_sec;
         }
         
-        GameOffscreenBuffer buffer {};
+        game_offscreen_buffer buffer {};
         buffer.width = g_back_buffer.width;
         buffer.height = g_back_buffer.height;
         buffer.pitch = g_back_buffer.pitch;
         buffer.memory = g_back_buffer.memory;
 
-        game_update_and_render(&buffer, blue_offset, green_offset, &game_sound_buffer, sound_output.tone_hz);
+        game_update_and_render(&buffer, &game_sound_buffer, new_input);
 
         if (bytes_to_write > 0)
         {
-            win32_fill_sound_buffer(&sound_output, game_sound_buffer, byte_to_lock, bytes_to_write);
+            win32_fill_sound_buffer(&sound_output, &game_sound_buffer, byte_to_lock, bytes_to_write);
         }
         
         HDC device_context = GetDC(hwnd);
-        Win32WindowDimension dimension = win32_get_window_dimension(hwnd);
-        win32_display_offscreen_buffer(g_back_buffer, device_context, dimension.width, dimension.height);
+        win32_window_dimension dimension = win32_get_window_dimension(hwnd);
+        win32_display_offscreen_buffer(&g_back_buffer, device_context, dimension.width, dimension.height);
         ReleaseDC(hwnd, device_context);
+
+        // swap game input
+        game_input *tmp_input = new_input;
+        new_input = old_input;
+        old_input = tmp_input;
 
         uint64_t end_cycle_count = __rdtsc();
         LARGE_INTEGER end_perf_counter;
