@@ -4,11 +4,13 @@ cmake_minimum_required(VERSION 3.3)
 # have all targets (exe, lib, dll) as projects (.vcproj)
 project(handmade)
 
-add_definitions(-D_UNICODE -DUNICODE)
-
-# Set the compiler flags and options.
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
-
+if(WIN32)
+  add_definitions(-D_UNICODE -DUNICODE)
+  # Set the compiler flags and options.
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
+else()
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11")
+endif()
 # Output info to console for display errors, and debugging
 message("cxx Flags: " ${CMAKE_CXX_FLAGS})
 
