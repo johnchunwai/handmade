@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <cinttypes>
 #include <cmath>
+#include <cstdio>
 
 #include <utility>
 #include <algorithm>
@@ -44,9 +45,28 @@ constexpr float kEpsilonFloat = 0.00001f;
 /*
   Platform specific stuff below
 */
+#include <SDL2/SDL.h>
 
 int main(int argc, char **argv)
 {
+    if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
+    {
+        printf("SDL_Init error: %s\n", SDL_GetError());
+        return -1;
+    }
+
+    auto *window = SDL_CreateWindow("Handmade Hero", 100, 100, 640, 480, SDL_WINDOW_SHOWN);
+    if (!window)
+    {
+        printf("SDL_CreateWindow error: %s\n", SDL_GetError());
+    }
+    else
+    {
+        printf("window created!\n");
+    }
+
+    SDL_DestroyWindow(window);
+    SDL_Quit();
     return 0;
 }
 // #define WIN32_LEAN_AND_MEAN
