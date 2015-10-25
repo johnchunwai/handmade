@@ -9,6 +9,9 @@ if(WIN32)
   # Set the compiler flags and options.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
 else()
+  # extra source (eg. for finding sdl2 lib)
+  set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake_linux")
+
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11")
 endif()
 # Output info to console for display errors, and debugging

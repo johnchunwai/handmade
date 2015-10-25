@@ -20,6 +20,7 @@
  */
 
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <cinttypes>
 #include <cmath>
@@ -49,21 +50,27 @@ constexpr float kEpsilonFloat = 0.00001f;
 
 int main(int argc, char **argv)
 {
-    if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
+    if (SDL_Init(SDL_INIT_VIDEO) != 0)
     {
         printf("SDL_Init error: %s\n", SDL_GetError());
-        return -1;
+        return 1;
     }
 
-    auto *window = SDL_CreateWindow("Handmade Hero", 100, 100, 640, 480, SDL_WINDOW_SHOWN);
+    auto *window = SDL_CreateWindow("Handmade Hero",
+                                    SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                                    640, 480,
+                                    SDL_WINDOW_OPENGL); // | SDL_WINDOW_FULLSCREEN_DESKTOP);
     if (!window)
     {
         printf("SDL_CreateWindow error: %s\n", SDL_GetError());
+        return 1;
     }
     else
     {
         printf("window created!\n");
     }
+
+    SDL_Delay(3000);
 
     SDL_DestroyWindow(window);
     SDL_Quit();
