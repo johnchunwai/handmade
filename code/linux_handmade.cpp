@@ -17,7 +17,7 @@
   - GetKeyboardLayout (for French keyboards, international WASD support)
 
   Just a partial list of stuff!
- */
+*/
 
 #include <cassert>
 #include <cstddef>
@@ -48,6 +48,83 @@ constexpr float kEpsilonFloat = 0.00001f;
 */
 #include <SDL2/SDL.h>
 
+global_variable bool32 g_running = false;
+
+internal bool32 sdl_handle_event(SDL_Event *event)
+{
+    bool32 running = true;
+    switch (event->type)
+    {
+    case SDL_QUIT:
+        {
+            printf("SDL_QUIT\n");
+            running = false;
+        }
+        break;
+    case SDL_WINDOWEVENT:
+        {
+            switch (event->window.event)
+            {
+            case SDL_WINDOWEVENT_RESIZED:
+                {
+                    printf("SDL_WINDOWEVENT_RESIZED (%d, %d)\n",
+                           event->window.data1, event->window.data2);
+                }
+                break;
+                // TODO: just for now
+            case SDL_WINDOWEVENT_EXPOSED:
+                {
+                    auto *window = SDL_GetWindowFromID(event->window.windowID);
+                    auto *renderer = SDL_GetRenderer(window);
+                    static bool32 is_white = true;
+                    is_white = !is_white;
+                    if (is_white)
+                    {
+                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                    }
+                    else
+                    {
+                        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+                    }
+                }
+                break;
+            }
+        }
+        break;
+    }
+    return running;
+}
+
+// internal void sdl_resize_back_buffer(win32_offscreen_buffer *buffer, int32_t width, int32_t height)
+// {
+//     // TODO: bulletproof this.
+//     // maybe don't free first, free after.
+//     if (buffer->memory)
+//     {
+//         VirtualFree(buffer->memory, 0, MEM_RELEASE);
+//         buffer->memory = nullptr;
+//     }
+
+//     int32_t bytes_per_pixel = 4;
+//     buffer->width = width;
+//     buffer->height = height;
+
+//     buffer->info.bmiHeader.biSize = sizeof(buffer->info.bmiHeader);
+//     buffer->info.bmiHeader.biPlanes = 1;
+//     buffer->info.bmiHeader.biBitCount = 32;  // no alpha, the 8-bit padding is for alignment
+//     buffer->info.bmiHeader.biCompression = BI_RGB;
+//     buffer->info.bmiHeader.biWidth = buffer->width;
+//     buffer->info.bmiHeader.biHeight = -buffer->height;  // negative indicates top down DIB
+    
+//     buffer->pitch = buffer->width * bytes_per_pixel;
+
+//     // StretchDIBits doesn't need device context or DibSection (compared to BitBlt)
+//     // just need the memory to be aligned on DWORD boundary
+//     int32_t bitmap_mem_size = buffer->width * buffer->height * bytes_per_pixel;
+//     buffer->memory = VirtualAlloc(nullptr, bitmap_mem_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+//     assert(buffer->memory);
+// }
+
 int main(int argc, char **argv)
 {
     if (SDL_Init(SDL_INIT_VIDEO) != 0)
@@ -59,19 +136,42 @@ int main(int argc, char **argv)
     auto *window = SDL_CreateWindow("Handmade Hero",
                                     SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                                     640, 480,
-                                    SDL_WINDOW_OPENGL); // | SDL_WINDOW_FULLSCREEN_DESKTOP);
+                                    SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+    // | SDL_WINDOW_FULLSCREEN_DESKTOP);
     if (!window)
     {
         printf("SDL_CreateWindow error: %s\n", SDL_GetError());
         return 1;
     }
-    else
+
+    // create renderer
+    auto *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    if (!renderer)
     {
-        printf("window created!\n");
+        printf("SDL_CreateRenderer error: %s\n", SDL_GetError());
+        return 1;
     }
 
-    SDL_Delay(3000);
+    g_running = true;
+    
+    while (g_running)
+    {
+        SDL_Event event;
+        while (SDL_PollEvent(&event))
+        {
+            if (!sdl_handle_event(&event))
+            {
+                g_running = false;
+                break;
+            }
+        }
 
+        // game frame
+        SDL_RenderClear(renderer);
+        SDL_RenderPresent(renderer);
+    }
+
+    SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;
@@ -106,7 +206,6 @@ int main(int argc, char **argv)
 // // constexpr float kXInputMinStickVal = -32768;
 
 // // TODO: global for now
-// global_variable bool32 g_running = false;
 // global_variable win32_offscreen_buffer g_back_buffer {};
 // global_variable IDirectSoundBuffer *g_sound_buffer = nullptr;
 
