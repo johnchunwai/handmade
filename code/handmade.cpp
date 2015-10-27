@@ -32,7 +32,7 @@ internal void render_weird_gradient(game_offscreen_buffer *buffer, int32_t blue_
     uint8_t *row = static_cast<uint8_t*>(buffer->memory);
     for (int32_t y = 0; y < buffer->height; ++y)
     {
-        uint32_t* pixel = reinterpret_cast<uint32_t*>(row);
+        uint32_t *pixel = reinterpret_cast<uint32_t*>(row);
         for (int32_t x = 0; x < buffer->width; ++x)
         {
             /*
