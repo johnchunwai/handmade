@@ -14,7 +14,7 @@ else()
     # ${SDL2_TTF_INCLUDE_DIR}
     )
   
-  SET(handmade_SRCS sdl_handmade.cpp)
+  SET(handmade_SRCS linux_handmade.cpp)
 
   add_executable(handmade ${handmade_SRCS})
 

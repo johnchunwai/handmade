@@ -6,10 +6,11 @@ if [ $# == 0 ] ; then
 fi
 
 mkdir ../../build
-pushd ../../build
+mkdir ../../build/handmade
+pushd ../../build/handmade
 
 if [ "$2" == '-g' ] ; then
-   cmake ../handmade
+   cmake ../../handmade/
 fi
 cmake --build . --config $1
 popd
