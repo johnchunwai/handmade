@@ -75,7 +75,7 @@ constexpr float kXInputMaxStickVal = 32767.0f;
 
 // TODO: global for now
 global_variable bool32 g_running = false;
-global_variable win32_offscreen_buffer g_back_buffer {};
+global_variable win32_offscreen_buffer g_backbuffer {};
 global_variable IDirectSoundBuffer *g_sound_buffer = nullptr;
 
 internal float win32_get_xinput_stick_normalized_deadzone(float unnormalized_deadzone)
@@ -276,7 +276,7 @@ internal void win32_debug_print_last_error()
     LocalFree(msg);
 }
 
-internal void win32_resize_back_buffer(win32_offscreen_buffer *buffer, int32_t width, int32_t height)
+internal void win32_resize_backbuffer(win32_offscreen_buffer *buffer, int32_t width, int32_t height)
 {
     // TODO: bulletproof this.
     // maybe don't free first, free after.
@@ -461,7 +461,7 @@ internal LRESULT CALLBACK win32_wnd_proc(
             PAINTSTRUCT paint;
             HDC device_context = BeginPaint(hwnd, &paint);
             win32_window_dimension dimension = win32_get_window_dimension(hwnd);
-            win32_display_offscreen_buffer(&g_back_buffer, device_context, dimension.width, dimension.height);
+            win32_display_offscreen_buffer(&g_backbuffer, device_context, dimension.width, dimension.height);
             EndPaint(hwnd, &paint);
         }
         break;
@@ -555,7 +555,7 @@ int32_t CALLBACK wWinMain(
     
     win32_load_xinput();
     
-    win32_resize_back_buffer(&g_back_buffer, 1280, 720);
+    win32_resize_backbuffer(&g_backbuffer, 1280, 720);
     
     wchar_t *wnd_class_name = L"Handmade Hero Window Class";
     WNDCLASSEXW wnd_class = {};  // c++11 aggregate initialization to zero the struct
@@ -766,10 +766,10 @@ int32_t CALLBACK wWinMain(
         }
         
         game_offscreen_buffer buffer {};
-        buffer.width = g_back_buffer.width;
-        buffer.height = g_back_buffer.height;
-        buffer.pitch = g_back_buffer.pitch;
-        buffer.memory = g_back_buffer.memory;
+        buffer.width = g_backbuffer.width;
+        buffer.height = g_backbuffer.height;
+        buffer.pitch = g_backbuffer.pitch;
+        buffer.memory = g_backbuffer.memory;
 
         game_update_and_render(&buffer, &game_sound_buffer, new_input);
 
@@ -780,7 +780,7 @@ int32_t CALLBACK wWinMain(
         
         HDC device_context = GetDC(hwnd);
         win32_window_dimension dimension = win32_get_window_dimension(hwnd);
-        win32_display_offscreen_buffer(&g_back_buffer, device_context, dimension.width, dimension.height);
+        win32_display_offscreen_buffer(&g_backbuffer, device_context, dimension.width, dimension.height);
         ReleaseDC(hwnd, device_context);
 
         // swap game input

@@ -47,6 +47,7 @@ constexpr float kEpsilonFloat = 0.00001f;
   Platform specific stuff below
 */
 #include <SDL2/SDL.h>
+#include <sys/mman.h>
 
 struct sdl_offscreen_buffer
 {
@@ -131,7 +132,8 @@ internal bool32 sdl_resize_backbuffer(sdl_offscreen_buffer *buffer,
     // maybe don't free first, free after.
     if (buffer->memory)
     {
-        free(buffer->memory);
+        // free(buffer->memory);
+        munmap(buffer->memory, buffer->width * buffer->height * bytes_per_pixel);
         buffer->memory = nullptr;
     }
 
@@ -152,7 +154,12 @@ internal bool32 sdl_resize_backbuffer(sdl_offscreen_buffer *buffer,
     buffer->pitch = buffer->width * bytes_per_pixel;
 
     int32_t bitmap_mem_size = buffer->width * buffer->height * bytes_per_pixel;
-    buffer->memory = malloc(bitmap_mem_size);
+    // buffer->memory = malloc(bitmap_mem_size);
+    buffer->memory = mmap(nullptr,
+                          bitmap_mem_size,
+                          PROT_READ | PROT_WRITE,
+                          MAP_ANONYMOUS | MAP_PRIVATE,
+                          -1, 0);
     assert(buffer->memory);
 
     return succeeded;
@@ -160,6 +167,8 @@ internal bool32 sdl_resize_backbuffer(sdl_offscreen_buffer *buffer,
 
 int main(int argc, char **argv)
 {
+    // printf("page size=%d\n", sysconf(_SC_PAGESIZE));
+    
     constexpr int32_t backbuffer_width = 1280;
     constexpr int32_t backbuffer_height = 720;
     
@@ -198,10 +207,6 @@ int main(int argc, char **argv)
     {
         sdl_cleanup(window, renderer, g_backbuffer.texture);
         return 1;
-
-
-
-
     }
     
     g_running = true;
@@ -219,7 +224,26 @@ int main(int argc, char **argv)
         }
 
         // game frame
-        SDL_RenderClear(renderer);
+        local_persist int green_offset = 0;
+        local_persist int blue_offset = 0;
+        uint8_t *row = (uint8_t*)g_backbuffer.memory;
+        for (int y = 0; y < g_backbuffer.height; ++y)
+        {
+            uint32_t *pixel = (uint32_t*)row;
+            for (int x = 0; x < g_backbuffer.width; ++x)
+            {
+                uint8_t red = 0;
+                uint8_t green = uint8_t(y + green_offset);
+                uint8_t blue = uint8_t(x + blue_offset);
+                *pixel++ = (red << 16) | (green << 8) | blue;
+            }
+            row += g_backbuffer.pitch;
+        }
+        ++green_offset;
+        
+        // SDL_RenderClear(renderer);
+        SDL_UpdateTexture(g_backbuffer.texture, nullptr, g_backbuffer.memory, g_backbuffer.pitch);
+        SDL_RenderCopy(renderer, g_backbuffer.texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
     }
 
