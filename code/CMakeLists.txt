@@ -25,4 +25,4 @@ else()
 endif()
 
 # message("PROJECT_BINARY_DIR: " ${PROJECT_BINARY_DIR})
-install(TARGETS handmade RUNTIME DESTINATION ${PROJECT_BINARY_DIR}/bin)
+# install(TARGETS handmade RUNTIME DESTINATION ${PROJECT_BINARY_DIR}/bin)
