@@ -3,7 +3,7 @@
 internal void game_output_sound(game_sound_buffer *sound_buffer, float tone_hz)
 {
     // Just do a sine wave
-    static float sine_t = 0.0f;
+    local_persist float sine_t = 0.0f;
     int16_t tone_volume = 1000;
     float wave_period_sample_count = static_cast<float>(sound_buffer->samples_per_sec) / tone_hz;
     

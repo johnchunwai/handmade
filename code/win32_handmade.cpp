@@ -644,7 +644,7 @@ int32_t CALLBACK wWinMain(
 
         
 
-        constexpr uint32_t max_controller_count = std::min((uint32_t)XUSER_MAX_COUNT,
+        constexpr uint32_t max_controller_count = std::min(XUSER_MAX_COUNT,
                                                            game_input::max_controller_count);
         for (DWORD controller_index = 0; controller_index < max_controller_count; ++controller_index)
         {
