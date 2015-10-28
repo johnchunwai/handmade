@@ -31,6 +31,7 @@
 #define local_persist static
 #define global_variable static
 #define internal static
+#define class_scope static
 
 typedef int32_t bool32;
 
