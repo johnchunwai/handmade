@@ -36,8 +36,8 @@
 typedef int32_t bool32;
 
 // constants
-constexpr float kPiFloat = 3.14159265359f;
-constexpr float kEpsilonFloat = 0.00001f;
+constexpr real32 kPiReal32 = 3.14159265359f;
+constexpr real32 kEpsilonReal32 = 0.00001f;
 
 #include "handmade.cpp"
 
@@ -71,21 +71,21 @@ struct win32_window_dimension
 };
 
 // constants
-constexpr float kXInputMaxStickVal = 32767.0f;
-// constexpr float kXInputMinStickVal = -32768;
+constexpr real32 kXInputMaxStickVal = 32767.0f;
+// constexpr real32 kXInputMinStickVal = -32768;
 
 // TODO: global for now
 global_variable bool32 g_running = false;
 global_variable win32_offscreen_buffer g_backbuffer {};
 global_variable IDirectSoundBuffer *g_sound_buffer = nullptr;
 
-internal float win32_get_xinput_stick_normalized_deadzone(float unnormalized_deadzone)
+internal real32 win32_get_xinput_stick_normalized_deadzone(real32 unnormalized_deadzone)
 {
     return unnormalized_deadzone / std::sqrt(kXInputMaxStickVal * kXInputMaxStickVal * 2.0f);
 }
-global_variable const float g_xinput_left_thumb_normalized_deadzone =
+global_variable const real32 g_xinput_left_thumb_normalized_deadzone =
         win32_get_xinput_stick_normalized_deadzone(XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-global_variable const float g_xinput_right_thumb_normalized_deadzone =
+global_variable const real32 g_xinput_right_thumb_normalized_deadzone =
         win32_get_xinput_stick_normalized_deadzone(XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
 
 // XInputGetState
@@ -134,8 +134,8 @@ internal void win32_load_xinput()
     }
 }
 
-internal std::pair<float, float> win32_xinput_thumb_resolve_deadzone_normalize(
-    float x, float y, float deadzone)
+internal std::pair<real32, real32> win32_xinput_thumb_resolve_deadzone_normalize(
+    real32 x, real32 y, real32 deadzone)
 {
     // normalize the input first (-1.0f to 1.0f)
     // max with -1 because abs(min val) is 1 great then max val
@@ -695,12 +695,12 @@ int32_t CALLBACK wWinMain(
 
                 auto left_stick_xy = win32_xinput_thumb_resolve_deadzone_normalize(
                             pad->sThumbLX, pad->sThumbLY, g_xinput_left_thumb_normalized_deadzone);
-                float left_stick_x = left_stick_xy.first;
-                float left_stick_y = left_stick_xy.second;
+                real32 left_stick_x = left_stick_xy.first;
+                real32 left_stick_y = left_stick_xy.second;
                 auto right_stick_xy = win32_xinput_thumb_resolve_deadzone_normalize(
                     pad->sThumbRX, pad->sThumbRY, g_xinput_right_thumb_normalized_deadzone);
-                float right_stick_x = right_stick_xy.first;
-                float right_stick_y = right_stick_xy.second;
+                real32 right_stick_x = right_stick_xy.first;
+                real32 right_stick_y = right_stick_xy.second;
                 // std::stringstream ss;
                 // ss << "stickx = " << left_stick_x << " sticky=" << left_stick_y << std::endl;
                 // OutputDebugStringA(ss.str().c_str());
@@ -795,10 +795,10 @@ int32_t CALLBACK wWinMain(
 
         int64_t cycles_elapsed = end_cycle_count - last_cycle_count; // use signed, as it may go backward
         int64_t counter_elapsed = end_perf_counter.QuadPart - last_perf_counter.QuadPart;
-        float mega_cycles_per_frame = static_cast<float>(cycles_elapsed) / 1000000.0f;
-        float ms_per_frame = 1000.0f * static_cast<float>(counter_elapsed)
-                / static_cast<float>(perf_count_freq);
-        float fps = static_cast<float>(perf_count_freq) / static_cast<float>(counter_elapsed);
+        real32 mega_cycles_per_frame = static_cast<real32>(cycles_elapsed) / 1000000.0f;
+        real32 ms_per_frame = 1000.0f * static_cast<real32>(counter_elapsed)
+                / static_cast<real32>(perf_count_freq);
+        real32 fps = static_cast<real32>(perf_count_freq) / static_cast<real32>(counter_elapsed);
 
         char buf[256];
         sprintf_s(buf, sizeof(buf), "%.2f Mc/f, %.2f ms/f, %.2f fps\n",

@@ -29,6 +29,8 @@
 #include <utility>
 #include <algorithm>
 //#include <sstream>
+#include <chrono>
+// #include <iostream>
 
 #define local_persist static
 #define global_variable static
@@ -36,10 +38,13 @@
 #define class_scope static
 
 typedef int32_t bool32;
+typedef float real32;
+typedef double real64;
+typedef std::chrono::duration<real32, std::ratio<1, 1000>> chrono_duration_ms;
 
 // constants
-constexpr float kPiFloat = 3.14159265359f;
-constexpr float kEpsilonFloat = 0.00001f;
+constexpr real32 kPiReal32 = 3.14159265359f;
+constexpr real32 kEpsilonReal32 = 0.00001f;
 
 #include "handmade.cpp"
 
@@ -52,19 +57,19 @@ constexpr float kEpsilonFloat = 0.00001f;
 
 // constants
 constexpr const char *kSdlControllerMappingFile = "./data/sdl_gamecontroller_db/gamecontrollerdb.txt";
-constexpr float kSdlControllerMaxStickVal = 32767.0f;
-// constexpr float kSdlControllerMinStickVal = -32768;
+constexpr real32 kSdlControllerMaxStickVal = 32767.0f;
+// constexpr real32 kSdlControllerMinStickVal = -32768;
 
-internal float sdl_get_controller_stick_normalized_deadzone(
-    float unnormalized_deadzone)
+internal real32 sdl_get_controller_stick_normalized_deadzone(
+    real32 unnormalized_deadzone)
 {
     return unnormalized_deadzone / std::sqrt(
         kSdlControllerMaxStickVal * kSdlControllerMaxStickVal * 2.0f);
 }
 // following un-normalized deadzone comes from xinput
-global_variable const float kSdlLeftThumbNormalizedDeadzone =
+global_variable const real32 kSdlLeftThumbNormalizedDeadzone =
         sdl_get_controller_stick_normalized_deadzone(7849.0f);
-global_variable const float kSdlRightThumbNormalizedDeadzone =
+global_variable const real32 kSdlRightThumbNormalizedDeadzone =
         sdl_get_controller_stick_normalized_deadzone(8689.0f);
 
 struct sdl_offscreen_buffer
@@ -202,8 +207,8 @@ internal bool32 sdl_resize_backbuffer(sdl_offscreen_buffer *buffer,
     return succeeded;
 }
 
-internal std::pair<float, float> sdl_thumb_stick_resolve_deadzone_normalize(
-    float x, float y, float deadzone)
+internal std::pair<real32, real32> sdl_thumb_stick_resolve_deadzone_normalize(
+    real32 x, real32 y, real32 deadzone)
 {
     // normalize the input first (-1.0f to 1.0f)
     // max with -1 because abs(min val) is 1 great then max val
@@ -355,6 +360,9 @@ int main(int argc, char **argv)
     */
 
     g_running = true;
+
+    uint64_t last_cycle_count = _rdtsc();
+    auto last_time_point = std::chrono::high_resolution_clock::now();
     
     while (g_running)
     {
@@ -427,13 +435,13 @@ int main(int argc, char **argv)
                 sdl_controller,
                 SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
 
-            float left_stick_x = static_cast<float>(SDL_GameControllerGetAxis(
+            real32 left_stick_x = static_cast<real32>(SDL_GameControllerGetAxis(
                 sdl_controller, SDL_CONTROLLER_AXIS_LEFTX));
-            float left_stick_y = static_cast<float>(SDL_GameControllerGetAxis(
+            real32 left_stick_y = static_cast<real32>(SDL_GameControllerGetAxis(
                 sdl_controller, SDL_CONTROLLER_AXIS_LEFTY));
-            float right_stick_x = static_cast<float>(SDL_GameControllerGetAxis(
+            real32 right_stick_x = static_cast<real32>(SDL_GameControllerGetAxis(
                 sdl_controller, SDL_CONTROLLER_AXIS_RIGHTX));
-            float right_stick_y = static_cast<float>(SDL_GameControllerGetAxis(
+            real32 right_stick_y = static_cast<real32>(SDL_GameControllerGetAxis(
                 sdl_controller, SDL_CONTROLLER_AXIS_RIGHTY));
             auto left_stick_xy = sdl_thumb_stick_resolve_deadzone_normalize(
                 left_stick_x, left_stick_y, kSdlLeftThumbNormalizedDeadzone);
@@ -499,6 +507,25 @@ int main(int argc, char **argv)
                           g_backbuffer.memory, g_backbuffer.pitch);
         SDL_RenderCopy(renderer, g_backbuffer.texture, nullptr, nullptr);
         SDL_RenderPresent(renderer);
+
+        // profiling
+        uint64_t end_cycle_count = __rdtsc();
+        auto end_time_point = std::chrono::high_resolution_clock::now();
+
+         // use signed, as it may go backward
+        int64_t cycles_elapsed = end_cycle_count - last_cycle_count;
+        real32 mega_cycles_per_frame = static_cast<real32>(cycles_elapsed)
+                / 1000000.0f;
+
+        real32 ms_per_frame = std::chrono::duration_cast<chrono_duration_ms>(
+            end_time_point - last_time_point).count();
+        real32 fps = 1000.0f / ms_per_frame;
+
+        // printf("%.2f Mc/f, %.2f ms/f, %.2f fps\n",
+        //        mega_cycles_per_frame, ms_per_frame, fps);
+
+        last_cycle_count = end_cycle_count;
+        last_time_point = end_time_point;
     }
 
     sdl_cleanup(window, renderer, g_backbuffer.texture, &sdl_controllers);

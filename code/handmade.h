@@ -48,17 +48,17 @@ struct game_button_state
 
 struct game_analog_stick_state
 {
-    float start_x;
-    float start_y;
+    real32 start_x;
+    real32 start_y;
 
-    float min_x;
-    float min_y;
+    real32 min_x;
+    real32 min_y;
 
-    float max_x;
-    float max_y;
+    real32 max_x;
+    real32 max_y;
 
-    float end_x;
-    float end_y;
+    real32 end_x;
+    real32 end_y;
 };
 
 struct game_controller_input
