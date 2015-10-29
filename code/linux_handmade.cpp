@@ -252,7 +252,7 @@ void sdl_init_controllers(sdl_game_controllers *controllers,
     }
     // get the number of joysticks detected by SDL
     int32_t sdl_num_joysticks = SDL_NumJoysticks();
-    if (sdl_num_joysticks > 0)
+    if (sdl_num_joysticks >= 0)
     {
         printf("sdl num controllers=%d\n", sdl_num_joysticks);
         int32_t controller_index = 0;
