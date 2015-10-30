@@ -84,6 +84,7 @@ struct sdl_offscreen_buffer
 struct sdl_game_controllers
 {
     SDL_GameController *controllers[game_input::max_controller_count];
+    SDL_Haptic *haptics[game_input::max_controller_count];
     int32_t num_controllers_active;
 };
 
@@ -96,10 +97,16 @@ internal void sdl_cleanup(SDL_Window *window, SDL_Renderer *renderer,
 {
     if (controllers)
     {
-        for (auto *controller : controllers->controllers)
+        for (int32_t i = 0; i < game_input::max_controller_count; ++i)
         {
+            auto *controller = controllers->controllers[i];
             if (controller)
             {
+                auto *haptic = controllers->haptics[i];
+                if (haptic)
+                {
+                    SDL_HapticClose(haptic);
+                }
                 SDL_GameControllerClose(controller);
             }
         }
@@ -128,6 +135,67 @@ internal bool32 sdl_handle_event(SDL_Event *event)
         {
             printf("SDL_QUIT\n");
             running = false;
+        }
+        break;
+    case SDL_KEYDOWN:
+    case SDL_KEYUP:
+        {
+            SDL_Keycode keycode = event->key.keysym.sym;
+            bool32 is_down = false;
+            bool32 was_down = false;
+            if (event->key.state == SDL_RELEASED)
+            {
+                was_down = true;
+            }
+            else if (event->key.repeat != 0)
+            {
+                is_down = true;
+                was_down = true;
+            }
+            bool32 alt_down = (event->key.keysym.mod & KMOD_ALT);
+            switch (keycode)
+            {
+            case SDLK_w:
+                {
+                    printf("W\n");
+                }
+                break;
+            case SDLK_a:
+                {
+                    printf("A\n");
+                }
+                break;
+            case SDLK_s:
+                {
+                    printf("S\n");
+                }
+                break;
+            case SDLK_d:
+                {
+                    printf("D\n");
+                }
+                break;
+            case SDLK_UP:
+                {
+                    printf("UP\n");
+                }
+                break;
+            case SDLK_DOWN:
+                {
+                    printf("DOWN\n");
+                }
+                break;
+            case SDLK_LEFT:
+                {
+                    printf("LEFT\n");
+                }
+                break;
+            case SDLK_RIGHT:
+                {
+                    printf("RIGHT\n");
+                }
+                break;
+            }
         }
         break;
     case SDL_WINDOWEVENT:
@@ -286,6 +354,35 @@ void sdl_init_controllers(sdl_game_controllers *controllers,
         printf("SDL_NumJoysticks error: %s. No controller support.\n",
                SDL_GetError());
     }
+
+    // init haptic
+    for (int32_t controller_index = 0;
+         controller_index < controllers->num_controllers_active;
+         ++controller_index)
+    {
+        SDL_Joystick *joystick = SDL_GameControllerGetJoystick(
+            controllers->controllers[controller_index]);
+        assert(joystick || !"failed to get joystick from controller");
+        SDL_Haptic *haptic = SDL_HapticOpenFromJoystick(joystick);
+        if (haptic)
+        {
+            printf("Haptic supported by controller %d\n", controller_index);
+            if (SDL_HapticRumbleInit(haptic) == 0)
+            {
+                printf("Rumbling supported\n");
+                controllers->haptics[controller_index] = haptic;
+            }
+            else
+            {
+                printf("Rumbling not supported\n");
+                SDL_HapticClose(haptic);
+            }
+        }
+        else
+        {
+            printf("Haptic not supported by controller %d\n", controller_index);
+        }
+    }
 }
 
 internal void sdl_process_controller_digital_button(
@@ -300,15 +397,38 @@ internal void sdl_process_controller_digital_button(
             old_state->num_half_transition + transition_amount;
 }
 
+#if 0
 internal __inline__ volatile uint64_t __rdtsc(void)
 {
   unsigned hi, lo;
   __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
   return ( (uint64_t)lo)|( ((uint64_t)hi)<<32 );
 }
+#endif
+
+// int if_rdtscp() {
+//     unsigned int edx = 0;
+
+//     asm volatile (
+//      "CPUID\n\t"
+//     :
+//      "=d" (edx)
+//     :
+//     "a" (0x80000001)
+//     :
+//      "%rax", "%rcx", "%rdx");  
+
+//     return (edx >> 27) & 0x1;
+// }
 
 int main(int argc, char **argv)
 {
+    // if (if_rdtscp())
+    // {
+    //     printf("rdtscp\n");
+    // }
+    // else
+    //     printf("no rdtscp\n");
     // printf("page size=%d\n", sysconf(_SC_PAGESIZE));
     
     constexpr int32_t backbuffer_width = 1280;
@@ -317,7 +437,8 @@ int main(int argc, char **argv)
     SDL_Window *window = nullptr;
     SDL_Renderer *renderer = nullptr;
     
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0)
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER
+                 | SDL_INIT_HAPTIC) != 0)
     {
         printf("SDL_Init error: %s\n", SDL_GetError());
         return 1;
@@ -484,16 +605,19 @@ int main(int argc, char **argv)
 
         local_persist int green_offset = 0;
         local_persist int blue_offset = 0;
-        const game_controller_input &controller0 = new_input->controllers[0];
-        if (controller0.is_analog)
+        const game_controller_input *controller0 = &new_input->controllers[0];
+        auto *haptic = sdl_controllers.haptics[0];
+        if (controller0->is_analog)
         {
-            // tone_hz = 256.0f + 128.0f * controller0.right_stick.end_y;
-            blue_offset -= static_cast<int>(controller0.left_stick.end_x * 10.0f);
-            // green_offset += static_cast<int>(controller0.left_stick.end_y * 5.0f);
+            // tone_hz = 256.0f + 128.0f * controller0->right_stick.end_y;
+            blue_offset -= static_cast<int>(controller0->left_stick.end_x * 10.0f);
+            green_offset += static_cast<int>(controller0->left_stick.end_y * 5.0f);
         }
-        if (controller0.a.ended_down)
+        if (controller0->a.ended_down)
         {
-            green_offset += 1;
+            // rumble for 2 sec with a strength of 30%
+            SDL_HapticRumblePlay(haptic, 0.3f, 2000);
+            // if we play for infinite, we can use SDL_HapticRumbleStop()
         }
         uint8_t *row = (uint8_t*)g_backbuffer.memory;
         for (int y = 0; y < g_backbuffer.height; ++y)

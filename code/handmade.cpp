@@ -63,18 +63,18 @@ internal void game_update_and_render(game_offscreen_buffer *buffer,
     local_persist int32_t green_offset = 0;
     real32 tone_hz = 256.0f;
 
-    const game_controller_input &controller0 = input->controllers[0];
-    if (controller0.is_analog)
+    const game_controller_input *controller0 = &input->controllers[0];
+    if (controller0->is_analog)
     {
-        tone_hz = 256.0f + 128.0f * controller0.right_stick.end_y;
-        blue_offset -= static_cast<int>(controller0.left_stick.end_x * 10.0f);
-        // green_offset += static_cast<int>(controller0.left_stick.end_y * 5.0f);
+        tone_hz = 256.0f + 128.0f * controller0->right_stick.end_y;
+        blue_offset -= static_cast<int>(controller0->left_stick.end_x * 10.0f);
+        // green_offset += static_cast<int>(controller0->left_stick.end_y * 5.0f);
     }
     else
     {
     }
 
-    if (controller0.a.ended_down)
+    if (controller0->a.ended_down)
     {
         green_offset += 1;
     }
