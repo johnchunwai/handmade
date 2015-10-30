@@ -300,6 +300,13 @@ internal void sdl_process_controller_digital_button(
             old_state->num_half_transition + transition_amount;
 }
 
+internal __inline__ volatile uint64_t __rdtsc(void)
+{
+  unsigned hi, lo;
+  __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
+  return ( (uint64_t)lo)|( ((uint64_t)hi)<<32 );
+}
+
 int main(int argc, char **argv)
 {
     // printf("page size=%d\n", sysconf(_SC_PAGESIZE));
@@ -361,7 +368,7 @@ int main(int argc, char **argv)
 
     g_running = true;
 
-    uint64_t last_cycle_count = _rdtsc();
+    uint64_t last_cycle_count = __rdtsc();
     auto last_time_point = std::chrono::high_resolution_clock::now();
     
     while (g_running)
@@ -521,8 +528,8 @@ int main(int argc, char **argv)
             end_time_point - last_time_point).count();
         real32 fps = 1000.0f / ms_per_frame;
 
-        // printf("%.2f Mc/f, %.2f ms/f, %.2f fps\n",
-        //        mega_cycles_per_frame, ms_per_frame, fps);
+        printf("%.2f Mc/f, %.2f ms/f, %.2f fps\n",
+               mega_cycles_per_frame, ms_per_frame, fps);
 
         last_cycle_count = end_cycle_count;
         last_time_point = end_time_point;
