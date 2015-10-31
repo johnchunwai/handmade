@@ -25,6 +25,7 @@
 #include <cinttypes>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 #include <utility>
 #include <algorithm>
@@ -93,7 +94,8 @@ global_variable bool32 g_running = false;
 global_variable sdl_offscreen_buffer g_backbuffer {};
 
 internal void sdl_cleanup(SDL_Window *window, SDL_Renderer *renderer,
-                          SDL_Texture *texture, sdl_game_controllers *controllers)
+                          SDL_Texture *texture, SDL_AudioDeviceID audio_dev_id,
+                          sdl_game_controllers *controllers)
 {
     if (controllers)
     {
@@ -111,6 +113,12 @@ internal void sdl_cleanup(SDL_Window *window, SDL_Renderer *renderer,
             }
         }
     }
+
+    if (audio_dev_id != 0)
+    {
+        SDL_CloseAudioDevice(audio_dev_id);
+    }
+    
     if (texture)
     {
         SDL_DestroyTexture(texture);
@@ -397,6 +405,11 @@ internal void sdl_process_controller_digital_button(
             old_state->num_half_transition + transition_amount;
 }
 
+internal void sdl_audio_callback(void *userdata, uint8_t* stream, int32_t len)
+{
+    std::memset(stream, 0, len);
+}
+
 #if 0
 internal __inline__ volatile uint64_t __rdtsc(void)
 {
@@ -437,8 +450,8 @@ int main(int argc, char **argv)
     SDL_Window *window = nullptr;
     SDL_Renderer *renderer = nullptr;
     
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER
-                 | SDL_INIT_HAPTIC) != 0)
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER |
+                 SDL_INIT_AUDIO | SDL_INIT_HAPTIC) != 0)
     {
         printf("SDL_Init error: %s\n", SDL_GetError());
         return 1;
@@ -452,7 +465,7 @@ int main(int argc, char **argv)
     if (!window)
     {
         printf("SDL_CreateWindow error: %s\n", SDL_GetError());
-        sdl_cleanup(window, renderer, g_backbuffer.texture, nullptr);
+        sdl_cleanup(window, renderer, g_backbuffer.texture, 0, nullptr);
         return 1;
     }
 
@@ -461,7 +474,7 @@ int main(int argc, char **argv)
     if (!renderer)
     {
         printf("SDL_CreateRenderer error: %s\n", SDL_GetError());
-        sdl_cleanup(window, renderer, g_backbuffer.texture, nullptr);
+        sdl_cleanup(window, renderer, g_backbuffer.texture, 0, nullptr);
         return 1;
     }
 
@@ -469,8 +482,42 @@ int main(int argc, char **argv)
     if (!sdl_resize_backbuffer(&g_backbuffer, renderer,
                                backbuffer_width, backbuffer_height))
     {
-        sdl_cleanup(window, renderer, g_backbuffer.texture, nullptr);
+        sdl_cleanup(window, renderer, g_backbuffer.texture, 0, nullptr);
         return 1;
+    }
+
+    // init audio
+    SDL_AudioSpec desired {};
+    SDL_AudioSpec obtained {};
+    desired.freq = 48000;
+    desired.format = AUDIO_S16LSB;  // signed 16 bit little endian order
+    desired.channels = 2;
+    // TODO: adjust this
+    // must be a power of 2, so 65536/48000 = 1.3 sec (other option is 2.7 sec) 
+    desired.samples = 65536;
+    // TODO: may use SDL_QueueAudio instead of callback
+    desired.callback = sdl_audio_callback;
+    SDL_AudioDeviceID audio_dev_id = SDL_OpenAudioDevice(nullptr,
+                                                         0,
+                                                         &desired,
+                                                         &obtained,
+                                                         0);
+    if (audio_dev_id == 0)
+    {
+        printf("Failed to init audio: %s\n", SDL_GetError());
+    }
+    else if (desired.format != obtained.format ||
+             desired.freq != obtained.freq ||
+             desired.channels != obtained.channels)
+    {
+        printf("Failed to obtain desired audio format. No sound\n");
+        SDL_CloseAudioDevice(audio_dev_id);
+        audio_dev_id = 0;
+    }
+    else
+    {
+        // start playing audio
+        SDL_PauseAudioDevice(audio_dev_id, 0);
     }
 
     // input
@@ -659,6 +706,7 @@ int main(int argc, char **argv)
         last_time_point = end_time_point;
     }
 
-    sdl_cleanup(window, renderer, g_backbuffer.texture, &sdl_controllers);
+    sdl_cleanup(window, renderer, g_backbuffer.texture, audio_dev_id,
+                &sdl_controllers);
     return 0;
 }
