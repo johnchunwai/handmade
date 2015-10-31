@@ -34,6 +34,7 @@
 #define class_scope static
 
 typedef int32_t bool32;
+typedef float real32;
 
 // constants
 constexpr real32 kPiReal32 = 3.14159265359f;
