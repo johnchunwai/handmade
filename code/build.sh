@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [ $# == 0 ] ; then
-    echo 'Usage: build Release| Debug| RelWithDebInfo| MinSizeRel [-g]'
+    echo 'Usage: build Release| Debug| RelWithDebInfo| MinSizeRel'
     exit
 fi
 
@@ -9,8 +9,6 @@ mkdir ../../build
 mkdir ../../build/handmade
 pushd ../../build/handmade
 
-if [ "$2" == '-g' ] ; then
-   cmake ../../handmade/
-fi
-cmake --build . --config $1
+cmake ../../handmade/ -DCMAKE_BUILD_TYPE=$1 -DCMAKE_CXX_COMPILER_ID=Clang
+cmake --build .
 popd

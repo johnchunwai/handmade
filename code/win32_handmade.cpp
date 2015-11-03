@@ -741,7 +741,8 @@ int32_t CALLBACK wWinMain(
             DWORD write_cursor;
             if (SUCCEEDED(g_sound_buffer->GetCurrentPosition(&play_cursor, &write_cursor)))
             {
-                // fill the buffer till the play cursor
+                // fill the buffer till the play cursor + latency,
+                // start location is the last location we wrote to
                 byte_to_lock = (sound_output.running_sample_index * sound_output.bytes_per_sample)
                         % sound_output.sound_buffer_size;
 

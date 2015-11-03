@@ -1,8 +1,12 @@
-cmake_minimum_required(VERSION 3.3)
+cmake_minimum_required(VERSION 3.3 FATAL_ERROR)
 
 # Maps to a solution file (handmade.sln). The solution will
 # have all targets (exe, lib, dll) as projects (.vcproj)
 project(handmade)
+
+set(CMAKE_VERBOSE_MAKEFILE on)
+
+set(CMAKE_CXX_STANDARD 11)
 
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR})
 # message("output_path: " ${EXECUTABLE_OUTPUT_PATH})
@@ -15,7 +19,7 @@ else()
   # extra source (eg. for finding sdl2 lib)
   set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake_linux")
 
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 endif()
 
 # Output info to console for display errors, and debugging
