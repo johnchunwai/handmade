@@ -808,22 +808,14 @@ int main(int argc, char **argv)
                     = new_controller->right_stick.end_y;
         }
 
-        local_persist int green_offset = 0;
-        local_persist int blue_offset = 0;
-        const game_controller_input *controller0 = &new_input->controllers[0];
-        auto *haptic = sdl_controllers.haptics[0];
-        if (controller0->is_analog)
-        {
-            // tone_hz = 256.0f + 128.0f * controller0->right_stick.end_y;
-            blue_offset -= static_cast<int>(controller0->left_stick.end_x * 10.0f);
-            green_offset += static_cast<int>(controller0->left_stick.end_y * 5.0f);
-        }
-        if (controller0->a.ended_down)
-        {
-            // rumble for 2 sec with a strength of 30%
-            SDL_HapticRumblePlay(haptic, 0.3f, 2000);
-            // if we play for infinite, we can use SDL_HapticRumbleStop()
-        }
+        // const game_controller_input *controller0 = &new_input->controllers[0];
+        // auto *haptic = sdl_controllers.haptics[0];
+        // if (controller0->a.ended_down)
+        // {
+        //     // rumble for 2 sec with a strength of 30%
+        //     SDL_HapticRumblePlay(haptic, 0.3f, 2000);
+        //     // if we play for infinite, we can use SDL_HapticRumbleStop()
+        // }
 
         ptrdiff_t byte_to_lock = 0;
         ptrdiff_t bytes_to_write = 0;
@@ -861,25 +853,33 @@ int main(int argc, char **argv)
             game_sound_buffer.samples_per_sec = sound_output.samples_per_sec;
         }
 
+        game_offscreen_buffer buffer {};
+        buffer.width = g_backbuffer.width;
+        buffer.height = g_backbuffer.height;
+        buffer.pitch = g_backbuffer.pitch;
+        buffer.memory = g_backbuffer.memory;
+
+        game_update_and_render(&buffer, &game_sound_buffer, new_input);
+
         if (bytes_to_write > 0)
         {
             sdl_fill_sound_buffer(&sound_output, &game_sound_buffer,
                                   byte_to_lock, bytes_to_write);
         }
         
-        uint8_t *row = (uint8_t*)g_backbuffer.memory;
-        for (int y = 0; y < g_backbuffer.height; ++y)
-        {
-            uint32_t *pixel = (uint32_t*)row;
-            for (int x = 0; x < g_backbuffer.width; ++x)
-            {
-                uint8_t red = 0;
-                uint8_t green = uint8_t(y + green_offset);
-                uint8_t blue = uint8_t(x + blue_offset);
-                *pixel++ = (red << 16) | (green << 8) | blue;
-            }
-            row += g_backbuffer.pitch;
-        }
+        // uint8_t *row = (uint8_t*)g_backbuffer.memory;
+        // for (int y = 0; y < g_backbuffer.height; ++y)
+        // {
+        //     uint32_t *pixel = (uint32_t*)row;
+        //     for (int x = 0; x < g_backbuffer.width; ++x)
+        //     {
+        //         uint8_t red = 0;
+        //         uint8_t green = uint8_t(y + green_offset);
+        //         uint8_t blue = uint8_t(x + blue_offset);
+        //         *pixel++ = (red << 16) | (green << 8) | blue;
+        //     }
+        //     row += g_backbuffer.pitch;
+        // }
         
         // SDL_RenderClear(renderer);
         SDL_UpdateTexture(g_backbuffer.texture, nullptr,
@@ -900,8 +900,8 @@ int main(int argc, char **argv)
             end_time_point - last_time_point).count();
         real32 fps = 1000.0f / ms_per_frame;
 
-        printf("%.2f Mc/f, %.2f ms/f, %.2f fps\n",
-               mega_cycles_per_frame, ms_per_frame, fps);
+        // printf("%.2f Mc/f, %.2f ms/f, %.2f fps\n",
+        //        mega_cycles_per_frame, ms_per_frame, fps);
 
         last_cycle_count = end_cycle_count;
         last_time_point = end_time_point;
