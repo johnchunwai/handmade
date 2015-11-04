@@ -7,6 +7,13 @@
 template<typename T, size_t size>
 constexpr size_t array_length(T (&arr)[size]) { return size; }
 
+template<typename T>
+constexpr T kilobyte(T val) { return val * 1024ULL; }
+template<typename T>
+constexpr T megabyte(T val) { return kilobyte(val) * 1024UL; }
+template<typename T>
+constexpr T gigabyte(T val) { return megabyte(val) * 1024UL; }
+
 /*
   NOTE: Services that the game provides to the platform layer.
 */
@@ -89,10 +96,31 @@ struct game_input
     game_controller_input controllers[max_controller_count];
 };
 
-internal void game_update_and_render(game_offscreen_buffer *buffer,
+struct game_memory
+{
+    bool32 is_initialized;
+
+    void *permanent_storage;  // required to be cleared to 0 at startup
+    uint64_t permanent_storage_size;
+    void *transient_storage;  // required to be cleared to 0 at startup
+    uint64_t transient_storage_size;
+};
+
+internal void game_update_and_render(game_memory *memory,
+                                     game_offscreen_buffer *buffer,
                                      game_sound_buffer *sound_buffer,
                                      const game_input *input);
 
 /*
   TODO: Services that the platform layer provides to the game.
 */
+
+/*
+ */
+
+struct game_state
+{
+    int32_t blue_offset;
+    int32_t green_offset;
+    real32 tone_hz;
+};

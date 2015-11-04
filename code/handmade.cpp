@@ -55,19 +55,27 @@ internal void render_weird_gradient(game_offscreen_buffer *buffer, int32_t blue_
     }
 }
 
-internal void game_update_and_render(game_offscreen_buffer *buffer,
+internal void game_update_and_render(game_memory *memory,
+                                     game_offscreen_buffer *buffer,
                                      game_sound_buffer *sound_buffer,
                                      const game_input *input)
 {
-    local_persist int32_t blue_offset = 0;
-    local_persist int32_t green_offset = 0;
-    real32 tone_hz = 256.0f;
-
+    game_state *state =
+            reinterpret_cast<game_state*>(memory->permanent_storage);
+    if (!memory->is_initialized)
+    {
+        state->blue_offset = 0;
+        // state->green_offset = 0;
+        // state->tone_hz = 256.0f;
+        memory->is_initialized = true;
+    }
+    
     const game_controller_input *controller0 = &input->controllers[0];
     if (controller0->is_analog)
     {
-        tone_hz = 256.0f + 128.0f * controller0->right_stick.end_y;
-        blue_offset -= static_cast<int>(controller0->left_stick.end_x * 10.0f);
+        state->tone_hz = 256.0f + 128.0f * controller0->right_stick.end_y;
+        state->blue_offset -= static_cast<int>(
+            controller0->left_stick.end_x * 10.0f);
         // green_offset += static_cast<int>(controller0->left_stick.end_y * 5.0f);
     }
     else
@@ -76,39 +84,40 @@ internal void game_update_and_render(game_offscreen_buffer *buffer,
 
     if (controller0->a.ended_down)
     {
-        green_offset += 1;
+        state->green_offset += 1;
     }
-                // if (left_stick_x > kEpsilonReal32 || left_stick_x < -kEpsilonReal32)
-                // {
-                // }
-                // if (left_stick_y > kEpsilonReal32 || left_stick_y < -kEpsilonReal32)
-                // {
-                // }
-                // if (x_button)
-                // {
-                //     blue_offset += 5;
+    // if (left_stick_x > kEpsilonReal32 || left_stick_x < -kEpsilonReal32)
+    // {
+    // }
+    // if (left_stick_y > kEpsilonReal32 || left_stick_y < -kEpsilonReal32)
+    // {
+    // }
+    // if (x_button)
+    // {
+    //     blue_offset += 5;
 
-                //     // Add some vibration left motor
-                //     XINPUT_VIBRATION vibration {};
-                //     vibration.wLeftMotorSpeed = 65535;
-                //     XInputSetState(controller_index, &vibration);
-                // }
-                // if (y_button)
-                // {
-                //     green_offset += 2;
+    //     // Add some vibration left motor
+    //     XINPUT_VIBRATION vibration {};
+    //     vibration.wLeftMotorSpeed = 65535;
+    //     XInputSetState(controller_index, &vibration);
+    // }
+    // if (y_button)
+    // {
+    //     green_offset += 2;
 
-                //     // Add some vibration right motor
-                //     XINPUT_VIBRATION vibration {};
-                //     vibration.wRightMotorSpeed = 10000;
-                //     XInputSetState(controller_index, &vibration);
-                // }
-                // if (a_button)
-                // {
-                //     XINPUT_VIBRATION vibration {};
-                //     XInputSetState(controller_index, &vibration);
-                // }
+    //     // Add some vibration right motor
+    //     XINPUT_VIBRATION vibration {};
+    //     vibration.wRightMotorSpeed = 10000;
+    //     XInputSetState(controller_index, &vibration);
+    // }
+    // if (a_button)
+    // {
+    //     XINPUT_VIBRATION vibration {};
+    //     XInputSetState(controller_index, &vibration);
+    // }
 
     // TODO: allow sample offsets here for more robust platform options
-    game_output_sound(sound_buffer, tone_hz);
-    render_weird_gradient(buffer, blue_offset, green_offset);
+    game_output_sound(sound_buffer, state->tone_hz);
+    render_weird_gradient(buffer, state->blue_offset,
+                          state->green_offset);
 }
