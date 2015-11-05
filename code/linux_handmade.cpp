@@ -359,9 +359,6 @@ internal SDL_AudioDeviceID sdl_init_sound(sdl_sound_output *sound_output)
                sound_output->ring_buffer.memory != MAP_FAILED);
         std::memset(sound_output->ring_buffer.memory, 0,
                     sound_output->ring_buffer.size);
-
-        // start playing audio
-        SDL_PauseAudioDevice(audio_dev_id, 0);
     }
 
     return audio_dev_id;
@@ -656,15 +653,16 @@ int main(int argc, char **argv)
     // TODO: may need to adjust this
     // must be a power of 2, 2048 samples seem to be a popular setting balancing
     // latency and skips (~23.5 fps, 42.67 ms between writes)
-    sound_output.sdl_audio_buffer_size_in_samples = 2048;
+    sound_output.sdl_audio_buffer_size_in_samples = 4096;
     // aim for 1/15th sec latency
-    sound_output.latency_sample_count = sound_output.samples_per_sec / 15;
+    sound_output.latency_sample_count = sound_output.samples_per_sec / 10;
     sound_output.bytes_per_sample = sizeof(int16_t) * sound_output.num_sound_ch;
     sound_output.ring_buffer.size = sound_output.samples_per_sec *
             sound_output.bytes_per_sample * sound_output.sec_to_buffer;
 
     SDL_AudioDeviceID audio_dev_id = sdl_init_sound(&sound_output);
     int16_t *samples = nullptr;
+    bool32 sound_playing = false;
     if (audio_dev_id > 0)
     {
         // allocate sound buffer sample, this is free automatically when app
@@ -866,6 +864,12 @@ int main(int argc, char **argv)
                 }
                 SDL_UnlockAudioDevice(audio_dev_id);
                 printf("bytes_to_write=%" PRIu64"\n", bytes_to_write);
+                if (!sound_playing)
+                {
+                    // start playing audio
+                    SDL_PauseAudioDevice(audio_dev_id, 0);
+                    sound_playing = true;
+                }
             }
             
             game_sound_buffer game_sound_buffer {};
@@ -890,6 +894,7 @@ int main(int argc, char **argv)
             {
                 sdl_fill_sound_buffer(&sound_output, &game_sound_buffer,
                                       byte_to_lock, bytes_to_write);
+                printf("bytes written=%" PRIu64"\n", bytes_to_write);
             }
         
             // uint8_t *row = (uint8_t*)g_backbuffer.memory;

@@ -64,9 +64,10 @@ internal void game_update_and_render(game_memory *memory,
             reinterpret_cast<game_state*>(memory->permanent_storage);
     if (!memory->is_initialized)
     {
-        state->blue_offset = 0;
+        // memory is already zeroed
+        // state->blue_offset = 0;
         // state->green_offset = 0;
-        // state->tone_hz = 256.0f;
+        state->tone_hz = 256.0f;
         memory->is_initialized = true;
     }
     
