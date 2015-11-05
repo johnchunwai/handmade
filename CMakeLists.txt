@@ -11,14 +11,25 @@ set(CMAKE_CXX_STANDARD 11)
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR})
 # message("output_path: " ${EXECUTABLE_OUTPUT_PATH})
 # message("proj src dir: " ${PROJECT_SOURCE_DIR})
+
+option(use_sdl "use_sdl" off)
+message("use_sdl: " ${use_sdl})
+
 if(WIN32)
+  if(use_sdl)
+    # extra source (eg. for finding sdl2 lib)
+    set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake_win32")
+  endif(use_sdl)
+  
   add_definitions(-D_UNICODE -DUNICODE)
   # Set the compiler flags and options.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
 else()
-  # extra source (eg. for finding sdl2 lib)
-  set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake_linux")
-
+  if(use_sdl)
+    # extra source (eg. for finding sdl2 lib)
+    set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake_linux")
+  endif(use_sdl)
+  
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 endif()
 

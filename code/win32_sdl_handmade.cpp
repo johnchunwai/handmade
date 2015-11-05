@@ -53,12 +53,12 @@ constexpr real32 kEpsilonReal32 = 0.00001f;
 /*
   Platform specific stuff below
 */
-#include <SDL2/SDL.h>
-#include <sys/mman.h>
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
 
-#ifndef MAP_ANONYMOUS
-#define MAP_ANONYMOUS MAP_ANON
-#endif
+#include <windows.h>
+#include <intrin.h>
+#include <SDL.h>
 
 // constants
 constexpr const char *kSdlControllerMappingFile = "./data/sdl_gamecontroller_db/gamecontrollerdb.txt";
@@ -278,8 +278,7 @@ internal bool32 sdl_resize_backbuffer(sdl_offscreen_buffer *buffer,
     if (buffer->memory)
     {
         // free(buffer->memory);
-        munmap(buffer->memory,
-               buffer->width * buffer->height * bytes_per_pixel);
+        VirtualFree(buffer->memory, 0, MEM_RELEASE);
         buffer->memory = nullptr;
     }
 
@@ -300,12 +299,9 @@ internal bool32 sdl_resize_backbuffer(sdl_offscreen_buffer *buffer,
 
     int32_t bitmap_mem_size = buffer->width * buffer->height * bytes_per_pixel;
     // buffer->memory = malloc(bitmap_mem_size);
-    buffer->memory = mmap(nullptr,
-                          bitmap_mem_size,
-                          PROT_READ | PROT_WRITE,
-                          MAP_ANONYMOUS | MAP_PRIVATE,
-                          -1, 0);
-    assert(buffer->memory && buffer->memory != MAP_FAILED);
+    buffer->memory = VirtualAlloc(nullptr, bitmap_mem_size,
+                                  MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    assert(buffer->memory);
 
     return succeeded;
 }
@@ -350,13 +346,10 @@ internal SDL_AudioDeviceID sdl_init_sound(sdl_sound_output *sound_output)
         sound_output->sdl_audio_buffer_size_in_bytes = obtained.size;
         assert(obtained.silence == 0);
         // init ring buffer
-        sound_output->ring_buffer.memory = mmap(nullptr,
-                                   sound_output->ring_buffer.size,
-                                   PROT_READ | PROT_WRITE,
-                                   MAP_ANONYMOUS | MAP_PRIVATE,
-                                   -1, 0);
-        assert(sound_output->ring_buffer.memory &&
-               sound_output->ring_buffer.memory != MAP_FAILED);
+        sound_output->ring_buffer.memory = VirtualAlloc(
+            nullptr, sound_output->ring_buffer.size,
+            MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+        assert(sound_output->ring_buffer.memory);
         std::memset(sound_output->ring_buffer.memory, 0,
                     sound_output->ring_buffer.size);
     }
@@ -653,7 +646,7 @@ int main(int argc, char **argv)
     // TODO: may need to adjust this
     // must be a power of 2, 2048 samples seem to be a popular setting balancing
     // latency and skips (~23.5 fps, 42.67 ms between writes)
-    sound_output.sdl_audio_buffer_size_in_samples = 4096;
+    sound_output.sdl_audio_buffer_size_in_samples = 2048;
     // aim for 1/15th sec latency
     sound_output.latency_sample_count = sound_output.samples_per_sec / 10;
     sound_output.bytes_per_sample = sizeof(int16_t) * sound_output.num_sound_ch;
@@ -667,12 +660,10 @@ int main(int argc, char **argv)
     {
         // allocate sound buffer sample, this is free automatically when app
         // terminates make it as large as the total ring buffer size for safety
-        samples = static_cast<int16_t*>(mmap(nullptr,
-                                             sound_output.ring_buffer.size,
-                                             PROT_READ | PROT_WRITE,
-                                             MAP_ANONYMOUS | MAP_PRIVATE,
-                                             -1, 0));
-        assert(samples && samples != MAP_FAILED);
+        samples = static_cast<int16_t*>(VirtualAlloc(
+            nullptr, sound_output.ring_buffer.size,
+            MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+        assert(samples);
         std::memset(samples, 0, sound_output.ring_buffer.size);
     }
 
@@ -695,21 +686,15 @@ int main(int argc, char **argv)
     memory.permanent_storage_size = megabyte(64ULL);
     // allocate game memory, this is free automatically when app
     // terminates
-    memory.permanent_storage = mmap(nullptr,
-                                    memory.permanent_storage_size,
-                                    PROT_READ | PROT_WRITE,
-                                    MAP_ANONYMOUS | MAP_PRIVATE,
-                                    -1, 0);
-    assert(memory.permanent_storage != MAP_FAILED);
+    memory.permanent_storage = VirtualAlloc(
+        nullptr, memory.permanent_storage_size,
+        MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     memory.transient_storage_size = gigabyte(1ULL);
     // allocate game memory, this is free automatically when app
     // terminates
-    memory.transient_storage = mmap(nullptr,
-                                    memory.transient_storage_size,
-                                    PROT_READ | PROT_WRITE,
-                                    MAP_ANONYMOUS | MAP_PRIVATE,
-                                    -1, 0);
-    assert(memory.transient_storage != MAP_FAILED);
+    memory.transient_storage = VirtualAlloc(
+        nullptr, memory.transient_storage_size,
+        MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
     if (g_backbuffer.memory && samples && memory.permanent_storage &&
         memory.transient_storage)
@@ -915,7 +900,8 @@ int main(int argc, char **argv)
         
             // SDL_RenderClear(renderer);
             SDL_UpdateTexture(g_backbuffer.texture, nullptr,
-                              g_backbuffer.memory, g_backbuffer.pitch);
+                              g_backbuffer.memory,
+                              static_cast<int32_t>(g_backbuffer.pitch));
             SDL_RenderCopy(renderer, g_backbuffer.texture, nullptr, nullptr);
             SDL_RenderPresent(renderer);
 
