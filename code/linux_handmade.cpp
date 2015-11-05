@@ -89,7 +89,7 @@ struct sdl_offscreen_buffer
 struct sdl_sound_ring_buffer
 {
     size_t size;
-    ptrdiff_t play_cursor;
+    volatile ptrdiff_t play_cursor;
     void *memory;
 };
 
@@ -692,221 +692,251 @@ int main(int argc, char **argv)
       controllers.
     */
 
-    g_running = true;
+    // game memory
+    game_memory memory {};
+    memory.permanent_storage_size = megabyte(64ULL);
+    // allocate game memory, this is free automatically when app
+    // terminates
+    memory.permanent_storage = mmap(nullptr,
+                                    memory.permanent_storage_size,
+                                    PROT_READ | PROT_WRITE,
+                                    MAP_ANONYMOUS | MAP_PRIVATE,
+                                    -1, 0);
+    memory.transient_storage_size = gigabyte(1ULL);
+    // allocate game memory, this is free automatically when app
+    // terminates
+    memory.transient_storage = mmap(nullptr,
+                                    memory.transient_storage_size,
+                                    PROT_READ | PROT_WRITE,
+                                    MAP_ANONYMOUS | MAP_PRIVATE,
+                                    -1, 0);
 
-    uint64_t last_cycle_count = __rdtsc();
-    auto last_time_point = std::chrono::high_resolution_clock::now();
-    
-    while (g_running)
+    if (g_backbuffer.memory && samples && memory.permanent_storage &&
+        memory.transient_storage)
     {
-        SDL_Event event;
-        while (SDL_PollEvent(&event))
+        g_running = true;
+
+        uint64_t last_cycle_count = __rdtsc();
+        auto last_time_point = std::chrono::high_resolution_clock::now();
+    
+        while (g_running)
         {
-            if (!sdl_handle_event(&event))
+            SDL_Event event;
+            while (SDL_PollEvent(&event))
             {
-                g_running = false;
-                break;
+                if (!sdl_handle_event(&event))
+                {
+                    g_running = false;
+                    break;
+                }
             }
-        }
 
-        // game frame
+            // game frame
 
-        // poll game controller input
-        for (int32_t controller_index = 0;
-             controller_index < sdl_controllers.num_controllers_active;
-             ++controller_index)
-        {
-            // Controller is connected
-            game_controller_input *new_controller
-                    = &new_input->controllers[controller_index];
-            const game_controller_input *old_controller
-                    = &old_input->controllers[controller_index];
-            SDL_GameController *sdl_controller =
-                    sdl_controllers.controllers[controller_index];
-            // these are what we care about
-            bool32 up = SDL_GameControllerGetButton(
-                sdl_controller, SDL_CONTROLLER_BUTTON_DPAD_UP);
-            bool32 down = SDL_GameControllerGetButton(
-                sdl_controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
-            bool32 left = SDL_GameControllerGetButton(
-                sdl_controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
-            bool32 right = SDL_GameControllerGetButton(
-                sdl_controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
-            // bool32 start = SDL_GameControllerGetButton(
-            // sdl_controller, SDL_CONTROLLER_BUTTON_START);
-            // bool32 back = SDL_GameControllerGetButton(
-            // sdl_controller, SDL_CONTROLLER_BUTTON_BACK);
+            // poll game controller input
+            for (int32_t controller_index = 0;
+                 controller_index < sdl_controllers.num_controllers_active;
+                 ++controller_index)
+            {
+                // Controller is connected
+                game_controller_input *new_controller
+                        = &new_input->controllers[controller_index];
+                const game_controller_input *old_controller
+                        = &old_input->controllers[controller_index];
+                SDL_GameController *sdl_controller =
+                        sdl_controllers.controllers[controller_index];
+                // these are what we care about
+                bool32 up = SDL_GameControllerGetButton(
+                    sdl_controller, SDL_CONTROLLER_BUTTON_DPAD_UP);
+                bool32 down = SDL_GameControllerGetButton(
+                    sdl_controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+                bool32 left = SDL_GameControllerGetButton(
+                    sdl_controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+                bool32 right = SDL_GameControllerGetButton(
+                    sdl_controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+                // bool32 start = SDL_GameControllerGetButton(
+                // sdl_controller, SDL_CONTROLLER_BUTTON_START);
+                // bool32 back = SDL_GameControllerGetButton(
+                // sdl_controller, SDL_CONTROLLER_BUTTON_BACK);
                 
-            sdl_process_controller_digital_button(
-                &new_controller->a,
-                &old_controller->a,
-                sdl_controller,
-                SDL_CONTROLLER_BUTTON_A);
-            sdl_process_controller_digital_button(
-                &new_controller->b,
-                &old_controller->b,
-                sdl_controller,
-                SDL_CONTROLLER_BUTTON_B);
-            sdl_process_controller_digital_button(
-                &new_controller->x,
-                &old_controller->x,
-                sdl_controller,
-                SDL_CONTROLLER_BUTTON_X);
-            sdl_process_controller_digital_button(
-                &new_controller->y,
-                &old_controller->a,
-                sdl_controller,
-                SDL_CONTROLLER_BUTTON_Y);
-            sdl_process_controller_digital_button(
-                &new_controller->left_shoulder,
-                &old_controller->left_shoulder,
-                sdl_controller,
-                SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
-            sdl_process_controller_digital_button(
-                &new_controller->right_shoulder,
-                &old_controller->right_shoulder,
-                sdl_controller,
-                SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+                sdl_process_controller_digital_button(
+                    &new_controller->a,
+                    &old_controller->a,
+                    sdl_controller,
+                    SDL_CONTROLLER_BUTTON_A);
+                sdl_process_controller_digital_button(
+                    &new_controller->b,
+                    &old_controller->b,
+                    sdl_controller,
+                    SDL_CONTROLLER_BUTTON_B);
+                sdl_process_controller_digital_button(
+                    &new_controller->x,
+                    &old_controller->x,
+                    sdl_controller,
+                    SDL_CONTROLLER_BUTTON_X);
+                sdl_process_controller_digital_button(
+                    &new_controller->y,
+                    &old_controller->a,
+                    sdl_controller,
+                    SDL_CONTROLLER_BUTTON_Y);
+                sdl_process_controller_digital_button(
+                    &new_controller->left_shoulder,
+                    &old_controller->left_shoulder,
+                    sdl_controller,
+                    SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+                sdl_process_controller_digital_button(
+                    &new_controller->right_shoulder,
+                    &old_controller->right_shoulder,
+                    sdl_controller,
+                    SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
 
-            real32 left_stick_x = static_cast<real32>(SDL_GameControllerGetAxis(
-                sdl_controller, SDL_CONTROLLER_AXIS_LEFTX));
-            real32 left_stick_y = static_cast<real32>(SDL_GameControllerGetAxis(
-                sdl_controller, SDL_CONTROLLER_AXIS_LEFTY));
-            real32 right_stick_x = static_cast<real32>(SDL_GameControllerGetAxis(
-                sdl_controller, SDL_CONTROLLER_AXIS_RIGHTX));
-            real32 right_stick_y = static_cast<real32>(SDL_GameControllerGetAxis(
-                sdl_controller, SDL_CONTROLLER_AXIS_RIGHTY));
-            auto left_stick_xy = sdl_thumb_stick_resolve_deadzone_normalize(
-                left_stick_x, left_stick_y, kSdlLeftThumbNormalizedDeadzone);
-            left_stick_x = left_stick_xy.first;
-            left_stick_y = left_stick_xy.second;
-            auto right_stick_xy = sdl_thumb_stick_resolve_deadzone_normalize(
-                right_stick_x, right_stick_y, kSdlRightThumbNormalizedDeadzone);
-            right_stick_x = right_stick_xy.first;
-            right_stick_y = right_stick_xy.second;
-            // std::stringstream ss;
-            // ss << "stickx = " << left_stick_x << " sticky=" << left_stick_y << std::endl;
-            // OutputDebugStringA(ss.str().c_str());
-            new_controller->is_analog = true;
+                real32 left_stick_x = static_cast<real32>(SDL_GameControllerGetAxis(
+                    sdl_controller, SDL_CONTROLLER_AXIS_LEFTX));
+                real32 left_stick_y = static_cast<real32>(SDL_GameControllerGetAxis(
+                    sdl_controller, SDL_CONTROLLER_AXIS_LEFTY));
+                real32 right_stick_x = static_cast<real32>(SDL_GameControllerGetAxis(
+                    sdl_controller, SDL_CONTROLLER_AXIS_RIGHTX));
+                real32 right_stick_y = static_cast<real32>(SDL_GameControllerGetAxis(
+                    sdl_controller, SDL_CONTROLLER_AXIS_RIGHTY));
+                auto left_stick_xy = sdl_thumb_stick_resolve_deadzone_normalize(
+                    left_stick_x, left_stick_y, kSdlLeftThumbNormalizedDeadzone);
+                left_stick_x = left_stick_xy.first;
+                left_stick_y = left_stick_xy.second;
+                auto right_stick_xy = sdl_thumb_stick_resolve_deadzone_normalize(
+                    right_stick_x, right_stick_y, kSdlRightThumbNormalizedDeadzone);
+                right_stick_x = right_stick_xy.first;
+                right_stick_y = right_stick_xy.second;
+                // std::stringstream ss;
+                // ss << "stickx = " << left_stick_x << " sticky=" << left_stick_y << std::endl;
+                // OutputDebugStringA(ss.str().c_str());
+                new_controller->is_analog = true;
 
-            new_controller->left_stick.start_x = old_controller->left_stick.end_x;
-            new_controller->left_stick.end_x = left_stick_x;
-            new_controller->left_stick.min_x = new_controller->left_stick.max_x
-                    = new_controller->left_stick.end_x;
-            new_controller->left_stick.start_y = old_controller->left_stick.end_y;
-            new_controller->left_stick.end_y = left_stick_y;
-            new_controller->left_stick.min_y = new_controller->left_stick.max_y
-                    = new_controller->left_stick.end_y;
+                new_controller->left_stick.start_x = old_controller->left_stick.end_x;
+                new_controller->left_stick.end_x = left_stick_x;
+                new_controller->left_stick.min_x = new_controller->left_stick.max_x
+                        = new_controller->left_stick.end_x;
+                new_controller->left_stick.start_y = old_controller->left_stick.end_y;
+                new_controller->left_stick.end_y = left_stick_y;
+                new_controller->left_stick.min_y = new_controller->left_stick.max_y
+                        = new_controller->left_stick.end_y;
 
-            new_controller->right_stick.start_x = old_controller->right_stick.end_x;
-            new_controller->right_stick.end_x = right_stick_x;
-            new_controller->right_stick.min_x = new_controller->right_stick.max_x
-                    = new_controller->right_stick.end_x;
-            new_controller->right_stick.start_y = old_controller->right_stick.end_y;
-            new_controller->right_stick.end_y = right_stick_y;
-            new_controller->right_stick.min_y = new_controller->right_stick.max_y
-                    = new_controller->right_stick.end_y;
-        }
-
-        // const game_controller_input *controller0 = &new_input->controllers[0];
-        // auto *haptic = sdl_controllers.haptics[0];
-        // if (controller0->a.ended_down)
-        // {
-        //     // rumble for 2 sec with a strength of 30%
-        //     SDL_HapticRumblePlay(haptic, 0.3f, 2000);
-        //     // if we play for infinite, we can use SDL_HapticRumbleStop()
-        // }
-
-        ptrdiff_t byte_to_lock = 0;
-        ptrdiff_t bytes_to_write = 0;
-        if (audio_dev_id != 0)
-        {
-            // fill the buffer till the play cursor + latency,
-            // starting from the last write position
-            byte_to_lock = (sound_output.running_sample_index *
-                            sound_output.bytes_per_sample)
-                    % sound_output.ring_buffer.size;
-
-            // avoid play cursor to change during this
-            SDL_LockAudioDevice(audio_dev_id);
-            ptrdiff_t target_to_cursor = (sound_output.ring_buffer.play_cursor +
-                                          sound_output.latency_sample_count *
-                                          sound_output.bytes_per_sample) %
-                    sound_output.ring_buffer.size;
-            if (byte_to_lock > target_to_cursor)
-            {
-                bytes_to_write = sound_output.ring_buffer.size - byte_to_lock
-                        + target_to_cursor;
+                new_controller->right_stick.start_x = old_controller->right_stick.end_x;
+                new_controller->right_stick.end_x = right_stick_x;
+                new_controller->right_stick.min_x = new_controller->right_stick.max_x
+                        = new_controller->right_stick.end_x;
+                new_controller->right_stick.start_y = old_controller->right_stick.end_y;
+                new_controller->right_stick.end_y = right_stick_y;
+                new_controller->right_stick.min_y = new_controller->right_stick.max_y
+                        = new_controller->right_stick.end_y;
             }
-            else
+
+            // const game_controller_input *controller0 = &new_input->controllers[0];
+            // auto *haptic = sdl_controllers.haptics[0];
+            // if (controller0->a.ended_down)
+            // {
+            //     // rumble for 2 sec with a strength of 30%
+            //     SDL_HapticRumblePlay(haptic, 0.3f, 2000);
+            //     // if we play for infinite, we can use SDL_HapticRumbleStop()
+            // }
+
+            ptrdiff_t byte_to_lock = 0;
+            ptrdiff_t bytes_to_write = 0;
+            if (audio_dev_id != 0)
             {
-                bytes_to_write = target_to_cursor - byte_to_lock;
+                // fill the buffer till the play cursor + latency,
+                // starting from the last write position
+                byte_to_lock = (sound_output.running_sample_index *
+                                sound_output.bytes_per_sample)
+                        % sound_output.ring_buffer.size;
+
+                // avoid play cursor to change during this
+                SDL_LockAudioDevice(audio_dev_id);
+                ptrdiff_t target_to_cursor = (sound_output.ring_buffer.play_cursor +
+                                              sound_output.latency_sample_count *
+                                              sound_output.bytes_per_sample) %
+                        sound_output.ring_buffer.size;
+                if (byte_to_lock > target_to_cursor)
+                {
+                    bytes_to_write = sound_output.ring_buffer.size - byte_to_lock
+                            + target_to_cursor;
+                }
+                else
+                {
+                    bytes_to_write = target_to_cursor - byte_to_lock;
+                }
+                SDL_UnlockAudioDevice(audio_dev_id);
+                printf("bytes_to_write=%" PRIu64"\n", bytes_to_write);
             }
-            SDL_UnlockAudioDevice(audio_dev_id);
-        }
-        game_sound_buffer game_sound_buffer {};
-        if (bytes_to_write > 0)
-        {
-            game_sound_buffer.samples = samples; 
-            game_sound_buffer.sample_count = bytes_to_write
-                    / sound_output.bytes_per_sample;
-            game_sound_buffer.samples_per_sec = sound_output.samples_per_sec;
-        }
+            
+            game_sound_buffer game_sound_buffer {};
+            if (bytes_to_write > 0)
+            {
+                game_sound_buffer.samples = samples; 
+                game_sound_buffer.sample_count = bytes_to_write
+                        / sound_output.bytes_per_sample;
+                game_sound_buffer.samples_per_sec = sound_output.samples_per_sec;
+            }
 
-        game_offscreen_buffer buffer {};
-        buffer.width = g_backbuffer.width;
-        buffer.height = g_backbuffer.height;
-        buffer.pitch = g_backbuffer.pitch;
-        buffer.memory = g_backbuffer.memory;
+            game_offscreen_buffer buffer {};
+            buffer.width = g_backbuffer.width;
+            buffer.height = g_backbuffer.height;
+            buffer.pitch = g_backbuffer.pitch;
+            buffer.memory = g_backbuffer.memory;
 
-        game_update_and_render(&buffer, &game_sound_buffer, new_input);
+            game_update_and_render(&memory, &buffer, &game_sound_buffer,
+                                   new_input);
 
-        if (bytes_to_write > 0)
-        {
-            sdl_fill_sound_buffer(&sound_output, &game_sound_buffer,
-                                  byte_to_lock, bytes_to_write);
-        }
+            if (bytes_to_write > 0)
+            {
+                sdl_fill_sound_buffer(&sound_output, &game_sound_buffer,
+                                      byte_to_lock, bytes_to_write);
+            }
         
-        // uint8_t *row = (uint8_t*)g_backbuffer.memory;
-        // for (int y = 0; y < g_backbuffer.height; ++y)
-        // {
-        //     uint32_t *pixel = (uint32_t*)row;
-        //     for (int x = 0; x < g_backbuffer.width; ++x)
-        //     {
-        //         uint8_t red = 0;
-        //         uint8_t green = uint8_t(y + green_offset);
-        //         uint8_t blue = uint8_t(x + blue_offset);
-        //         *pixel++ = (red << 16) | (green << 8) | blue;
-        //     }
-        //     row += g_backbuffer.pitch;
-        // }
+            // uint8_t *row = (uint8_t*)g_backbuffer.memory;
+            // for (int y = 0; y < g_backbuffer.height; ++y)
+            // {
+            //     uint32_t *pixel = (uint32_t*)row;
+            //     for (int x = 0; x < g_backbuffer.width; ++x)
+            //     {
+            //         uint8_t red = 0;
+            //         uint8_t green = uint8_t(y + green_offset);
+            //         uint8_t blue = uint8_t(x + blue_offset);
+            //         *pixel++ = (red << 16) | (green << 8) | blue;
+            //     }
+            //     row += g_backbuffer.pitch;
+            // }
         
-        // SDL_RenderClear(renderer);
-        SDL_UpdateTexture(g_backbuffer.texture, nullptr,
-                          g_backbuffer.memory, g_backbuffer.pitch);
-        SDL_RenderCopy(renderer, g_backbuffer.texture, nullptr, nullptr);
-        SDL_RenderPresent(renderer);
+            // SDL_RenderClear(renderer);
+            SDL_UpdateTexture(g_backbuffer.texture, nullptr,
+                              g_backbuffer.memory, g_backbuffer.pitch);
+            SDL_RenderCopy(renderer, g_backbuffer.texture, nullptr, nullptr);
+            SDL_RenderPresent(renderer);
 
-        // profiling
-        uint64_t end_cycle_count = __rdtsc();
-        auto end_time_point = std::chrono::high_resolution_clock::now();
+            // profiling
+            uint64_t end_cycle_count = __rdtsc();
+            auto end_time_point = std::chrono::high_resolution_clock::now();
 
-         // use signed, as it may go backward
-        int64_t cycles_elapsed = end_cycle_count - last_cycle_count;
-        real32 mega_cycles_per_frame = static_cast<real32>(cycles_elapsed)
-                / 1000000.0f;
+            // use signed, as it may go backward
+            int64_t cycles_elapsed = end_cycle_count - last_cycle_count;
+            real32 mega_cycles_per_frame = static_cast<real32>(cycles_elapsed)
+                    / 1000000.0f;
 
-        real32 ms_per_frame = std::chrono::duration_cast<chrono_duration_ms>(
-            end_time_point - last_time_point).count();
-        real32 fps = 1000.0f / ms_per_frame;
+            real32 ms_per_frame = std::chrono::duration_cast<chrono_duration_ms>(
+                end_time_point - last_time_point).count();
+            real32 fps = 1000.0f / ms_per_frame;
 
-        // printf("%.2f Mc/f, %.2f ms/f, %.2f fps\n",
-        //        mega_cycles_per_frame, ms_per_frame, fps);
+            printf("%.2f Mc/f, %.2f ms/f, %.2f fps\n",
+                   mega_cycles_per_frame, ms_per_frame, fps);
 
-        last_cycle_count = end_cycle_count;
-        last_time_point = end_time_point;
+            last_cycle_count = end_cycle_count;
+            last_time_point = end_time_point;
+        }
     }
-
+    else
+    {
+        // fail to allocate memory, no game.
+        printf("Fail to alloc memory to backbuffer, sound buffer, or game memory.\n");
+    }
     sdl_cleanup(window, renderer, g_backbuffer.texture, audio_dev_id,
                 &sdl_controllers);
     return 0;
