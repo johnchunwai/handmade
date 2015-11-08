@@ -47,17 +47,59 @@ typedef std::chrono::duration<real32, std::ratio<1, 1000>> chrono_duration_ms;
 constexpr real32 kPiReal32 = 3.14159265359f;
 constexpr real32 kEpsilonReal32 = 0.00001f;
 
+#include "handmade.h"
 #include "handmade.cpp"
 
 
 /*
   Platform specific stuff below
 */
+#ifdef WIN32
+
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 
 #include <windows.h>
 #include <intrin.h>
+
+internal void* platform_alloc_zeroed(void *base_addr, size_t length)
+{
+    void *memory = VirtualAlloc(base_addr, length,
+                                MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    assert(memory);
+    return memory;
+}
+
+internal void platform_free(void *memory, size_t length)
+{
+    VirtualFree(memory, 0, MEM_RELEASE);
+}
+
+#elif __linux__
+
+#include <sys/mman.h>
+
+#ifndef MAP_ANONYMOUS
+#define MAP_ANONYMOUS MAP_ANON
+#endif
+
+internal void* platform_alloc_zeroed(void *base_addr, size_t length)
+{
+    void *memory = mmap(base_addr,
+                        length,
+                        PROT_READ | PROT_WRITE,
+                        MAP_ANONYMOUS | MAP_PRIVATE,
+                        -1, 0);
+    assert(memory && memory != MAP_FAILED);
+    return memory;
+}
+
+internal void platform_free(void *memory, size_t length)
+{
+    munmap(memory, length);
+}
+
+#endif
 #include <SDL.h>
 
 // constants
@@ -277,8 +319,8 @@ internal bool32 sdl_resize_backbuffer(sdl_offscreen_buffer *buffer,
     // maybe don't free first, free after.
     if (buffer->memory)
     {
-        // free(buffer->memory);
-        VirtualFree(buffer->memory, 0, MEM_RELEASE);
+        int32_t mem_size = buffer->width * buffer->height * bytes_per_pixel;
+        platform_free(buffer->memory, mem_size);
         buffer->memory = nullptr;
     }
 
@@ -297,11 +339,8 @@ internal bool32 sdl_resize_backbuffer(sdl_offscreen_buffer *buffer,
     buffer->height = height;
     buffer->pitch = buffer->width * bytes_per_pixel;
 
-    int32_t bitmap_mem_size = buffer->width * buffer->height * bytes_per_pixel;
-    // buffer->memory = malloc(bitmap_mem_size);
-    buffer->memory = VirtualAlloc(nullptr, bitmap_mem_size,
-                                  MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    assert(buffer->memory);
+    int32_t mem_size = buffer->width * buffer->height * bytes_per_pixel;
+    buffer->memory = platform_alloc_zeroed(nullptr, mem_size);
 
     return succeeded;
 }
@@ -322,7 +361,7 @@ internal SDL_AudioDeviceID sdl_init_sound(sdl_sound_output *sound_output)
     desired.channels = sound_output->num_sound_ch;
     desired.samples = sound_output->sdl_audio_buffer_size_in_samples;
     desired.callback = sdl_audio_callback;
-    desired.userdata = reinterpret_cast<void*>(&sound_output->ring_buffer);
+    desired.userdata = static_cast<void*>(&sound_output->ring_buffer);
     SDL_AudioDeviceID audio_dev_id = SDL_OpenAudioDevice(
         nullptr, 0, &desired, &obtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
     // SDL_AudioSpec &obtained = desired;
@@ -346,12 +385,8 @@ internal SDL_AudioDeviceID sdl_init_sound(sdl_sound_output *sound_output)
         sound_output->sdl_audio_buffer_size_in_bytes = obtained.size;
         assert(obtained.silence == 0);
         // init ring buffer
-        sound_output->ring_buffer.memory = VirtualAlloc(
-            nullptr, sound_output->ring_buffer.size,
-            MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-        assert(sound_output->ring_buffer.memory);
-        std::memset(sound_output->ring_buffer.memory, 0,
-                    sound_output->ring_buffer.size);
+        sound_output->ring_buffer.memory = platform_alloc_zeroed(
+            nullptr, sound_output->ring_buffer.size);
     }
 
     return audio_dev_id;
@@ -376,7 +411,7 @@ internal void sdl_fill_sound_buffer(sdl_sound_output *sound_output,
     size_t region_sizes[max_regions] = {};
     // int16_t* samples = source_buffer->samples;
     uint8_t *samples = reinterpret_cast<uint8_t*>(source_buffer->samples);
-    uint8_t *ring_buffer_memory = reinterpret_cast<uint8_t*>(
+    uint8_t *ring_buffer_memory = static_cast<uint8_t*>(
         sound_output->ring_buffer.memory);
     regions[0] =  ring_buffer_memory + byte_to_lock;
     region_sizes[0] = bytes_to_write;
@@ -413,7 +448,7 @@ internal void sdl_audio_callback(void *userdata, uint8_t* stream, int32_t len)
     printf("sdl_audio_callback: len=%d, ring_buffer=%p\n", len, userdata);
     // std::memset(stream, 0, len);
     sdl_sound_ring_buffer *ring_buffer =
-            reinterpret_cast<sdl_sound_ring_buffer*>(userdata);
+            static_cast<sdl_sound_ring_buffer*>(userdata);
 
     // grab data from ring buffer to fill the sdl audio buffer
     size_t region_1_size = len;
@@ -424,7 +459,7 @@ internal void sdl_audio_callback(void *userdata, uint8_t* stream, int32_t len)
         region_2_size = static_cast<size_t>(len) - region_1_size;
     }
     std::memcpy(stream,
-                reinterpret_cast<uint8_t*>(ring_buffer->memory) +
+                static_cast<uint8_t*>(ring_buffer->memory) +
                 ring_buffer->play_cursor,
                 region_1_size);
     if (region_2_size > 0)
@@ -660,11 +695,8 @@ int main(int argc, char **argv)
     {
         // allocate sound buffer sample, this is free automatically when app
         // terminates make it as large as the total ring buffer size for safety
-        samples = static_cast<int16_t*>(VirtualAlloc(
-            nullptr, sound_output.ring_buffer.size,
-            MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
-        assert(samples);
-        std::memset(samples, 0, sound_output.ring_buffer.size);
+        samples = static_cast<int16_t*>(platform_alloc_zeroed(
+            nullptr, sound_output.ring_buffer.size));
     }
 
     // input
@@ -682,20 +714,23 @@ int main(int argc, char **argv)
     */
 
     // game memory
+#if HANDMADE_DEV_BUILD
+    void *base_memory_ptr = reinterpret_cast<void*>(terabyte(2ULL));
+#else
+    void *base_memory_ptr = nullptr;
+#endif
     game_memory memory {};
     memory.permanent_storage_size = megabyte(64ULL);
-    // allocate game memory, this is free automatically when app
-    // terminates
-    memory.permanent_storage = VirtualAlloc(
-        nullptr, memory.permanent_storage_size,
-        MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     memory.transient_storage_size = gigabyte(1ULL);
-    // allocate game memory, this is free automatically when app
-    // terminates
-    memory.transient_storage = VirtualAlloc(
-        nullptr, memory.transient_storage_size,
-        MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-
+    uint64_t total_size = memory.permanent_storage_size +
+            memory.transient_storage_size;
+    // Guarantee to be allocation granularity (64KB) aligned
+    // commited to page boundary (4KB), but the rest are wasted space
+    // memory auto clears to 0
+    // freed automatically when app terminates
+    memory.permanent_storage = platform_alloc_zeroed(base_memory_ptr, total_size);
+    memory.transient_storage = static_cast<int8_t*>(memory.permanent_storage) +
+            memory.permanent_storage_size;
     if (g_backbuffer.memory && samples && memory.permanent_storage &&
         memory.transient_storage)
     {

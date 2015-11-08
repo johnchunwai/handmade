@@ -14,6 +14,17 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR})
 
 option(use_sdl "use_sdl" off)
 message("use_sdl: " ${use_sdl})
+option(diagnostic "diagnotic" off)
+message("diagnostic: " ${diagnostic})
+option(dev_build "dev_build" off)
+message("dev_build: " ${dev_build})
+
+if(diagnostic)
+  add_definitions(-DHANDMADE_DIAGNOSTIC)
+endif()
+if(dev_build)
+  add_definitions(-DHANDMADE_DEV_BUILD)
+endif()
 
 if(WIN32)
   if(use_sdl)

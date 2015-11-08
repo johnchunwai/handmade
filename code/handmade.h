@@ -1,18 +1,31 @@
 #pragma once
 
+/*
+  HANDMADE_DIAGNOSTIC:
+    0 - build with diagnostic code present
+    1 - build with diagnostic code removed
+
+  HANDMADE_DEV_BUILD:
+    0 - build for internal development
+    1 - build for public release
+ */
 
 /*
   Utilities
 */
+#if HANDMADE_DIAGNOSTIC
+#define assert(expr) if (!(expr)) { *(int*)nullptr = 0; }
+#else
+#define assert(expr)
+#endif
+
 template<typename T, size_t size>
 constexpr size_t array_length(T (&arr)[size]) { return size; }
 
-template<typename T>
-constexpr T kilobyte(T val) { return val * 1024ULL; }
-template<typename T>
-constexpr T megabyte(T val) { return kilobyte(val) * 1024UL; }
-template<typename T>
-constexpr T gigabyte(T val) { return megabyte(val) * 1024UL; }
+constexpr uint64_t kilobyte(uint64_t val) { return val * 1024ULL; }
+constexpr uint64_t megabyte(uint64_t val) { return kilobyte(val) * 1024ULL; }
+constexpr uint64_t gigabyte(uint64_t val) { return megabyte(val) * 1024ULL; }
+constexpr uint64_t terabyte(uint64_t val) { return gigabyte(val) * 1024ULL; }
 
 /*
   NOTE: Services that the game provides to the platform layer.

@@ -20,6 +20,9 @@
 # Fortran module files
 *.mod
 
+# PyCharm/IntelliJ files
+*.idea
+
 # Compiled Static libraries
 *.lai
 *.la

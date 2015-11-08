@@ -60,8 +60,10 @@ internal void game_update_and_render(game_memory *memory,
                                      game_sound_buffer *sound_buffer,
                                      const game_input *input)
 {
+    assert(sizeof(game_state) <= memory->permanent_storage_size);
+        
     game_state *state =
-            reinterpret_cast<game_state*>(memory->permanent_storage);
+            static_cast<game_state*>(memory->permanent_storage);
     if (!memory->is_initialized)
     {
         // memory is already zeroed

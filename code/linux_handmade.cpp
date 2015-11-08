@@ -326,7 +326,7 @@ internal SDL_AudioDeviceID sdl_init_sound(sdl_sound_output *sound_output)
     desired.channels = sound_output->num_sound_ch;
     desired.samples = sound_output->sdl_audio_buffer_size_in_samples;
     desired.callback = sdl_audio_callback;
-    desired.userdata = reinterpret_cast<void*>(&sound_output->ring_buffer);
+    desired.userdata = static_cast<void*>(&sound_output->ring_buffer);
     SDL_AudioDeviceID audio_dev_id = SDL_OpenAudioDevice(
         nullptr, 0, &desired, &obtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
     // SDL_AudioSpec &obtained = desired;
@@ -383,7 +383,7 @@ internal void sdl_fill_sound_buffer(sdl_sound_output *sound_output,
     size_t region_sizes[max_regions] = {};
     // int16_t* samples = source_buffer->samples;
     uint8_t *samples = reinterpret_cast<uint8_t*>(source_buffer->samples);
-    uint8_t *ring_buffer_memory = reinterpret_cast<uint8_t*>(
+    uint8_t *ring_buffer_memory = static_cast<uint8_t*>(
         sound_output->ring_buffer.memory);
     regions[0] =  ring_buffer_memory + byte_to_lock;
     region_sizes[0] = bytes_to_write;
@@ -420,7 +420,7 @@ internal void sdl_audio_callback(void *userdata, uint8_t* stream, int32_t len)
     printf("sdl_audio_callback: len=%d, ring_buffer=%p\n", len, userdata);
     // std::memset(stream, 0, len);
     sdl_sound_ring_buffer *ring_buffer =
-            reinterpret_cast<sdl_sound_ring_buffer*>(userdata);
+            static_cast<sdl_sound_ring_buffer*>(userdata);
 
     // grab data from ring buffer to fill the sdl audio buffer
     size_t region_1_size = len;
@@ -431,7 +431,7 @@ internal void sdl_audio_callback(void *userdata, uint8_t* stream, int32_t len)
         region_2_size = static_cast<size_t>(len) - region_1_size;
     }
     std::memcpy(stream,
-                reinterpret_cast<uint8_t*>(ring_buffer->memory) +
+                static_cast<uint8_t*>(ring_buffer->memory) +
                 ring_buffer->play_cursor,
                 region_1_size);
     if (region_2_size > 0)

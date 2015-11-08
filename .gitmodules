@@ -1,0 +1,4 @@
+[submodule "data/sdl_gamecontroller_db"]
+	path = data/sdl_gamecontroller_db
+	url = https://github.com/gabomdq/SDL_GameControllerDB
+	branch = master

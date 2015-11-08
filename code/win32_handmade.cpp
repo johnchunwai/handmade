@@ -19,7 +19,6 @@
   Just a partial list of stuff!
  */
 
-#include <cassert>
 #include <cstdint>
 #include <cinttypes>
 #include <cmath>
@@ -644,6 +643,7 @@ int32_t CALLBACK wWinMain(
         samples = static_cast<int16_t*>(VirtualAlloc(
             nullptr, sound_output.sound_buffer_size,
             MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+        assert(samples);
     }
 
     // input
@@ -652,20 +652,24 @@ int32_t CALLBACK wWinMain(
     game_input *old_input = &input[1];
 
     // game memory
+#if HANDMADE_DEV_BUILD
+    void *base_memory_ptr = reinterpret_cast<void*>(terabyte(2ULL));
+#else
+    void *base_memory_ptr = nullptr;
+#endif
     game_memory memory {};
     memory.permanent_storage_size = megabyte(64ULL);
     memory.transient_storage_size = gigabyte(1ULL);
+    uint64_t total_size = memory.permanent_storage_size +
+            memory.transient_storage_size;
     // Guarantee to be allocation granularity (64KB) aligned
     // commited to page boundary (4KB), but the rest are wasted space
     // memory auto clears to 0
     // freed automatically when app terminates
-    memory.permanent_storage = VirtualAlloc(
-        nullptr, memory.permanent_storage_size,
-        MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    memory.transient_storage = VirtualAlloc(
-        nullptr, memory.transient_storage_size,
-        MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-
+    memory.permanent_storage = VirtualAlloc(base_memory_ptr, total_size,
+            MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    memory.transient_storage = static_cast<int8_t*>(memory.permanent_storage) +
+            memory.permanent_storage_size;
     if (g_backbuffer.memory && samples && memory.permanent_storage &&
         memory.transient_storage)
     {

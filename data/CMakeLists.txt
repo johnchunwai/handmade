@@ -1,4 +1,4 @@
-if(NOT WIN32)
+if(use_sdl)
   set(data_out_DIR ${EXECUTABLE_OUTPUT_PATH}/data)
   set(data_FILES "sdl_gamecontroller_db/gamecontrollerdb.txt;sdl_gamecontroller_db/README.md")
   
