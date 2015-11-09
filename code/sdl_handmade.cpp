@@ -19,7 +19,6 @@
   Just a partial list of stuff!
 */
 
-#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cinttypes>
@@ -78,10 +77,11 @@ internal void platform_free(void *memory, size_t length)
 #elif __linux__
 
 #include <sys/mman.h>
+#include <x86intrin.h>
 
 #ifndef MAP_ANONYMOUS
 #define MAP_ANONYMOUS MAP_ANON
-#endif
+#endif  // MAP_ANONYMOUS
 
 internal void* platform_alloc_zeroed(void *base_addr, size_t length)
 {
@@ -99,7 +99,17 @@ internal void platform_free(void *memory, size_t length)
     munmap(memory, length);
 }
 
-#endif
+#if __clang__
+internal __inline__ volatile uint64_t __rdtsc(void)
+{
+    unsigned hi, lo;
+    __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
+    return ( (uint64_t)lo)|( ((uint64_t)hi)<<32 );
+}
+#endif  // __clang__
+
+#endif  // platform check
+
 #include <SDL.h>
 
 // constants
@@ -499,8 +509,9 @@ internal std::pair<real32, real32> sdl_thumb_stick_resolve_deadzone_normalize(
     }
 
     // scale the val for smooth transition outside deadzone
-    x *= (1 / (1 - deadzone));
-    y *= (1 / (1 - deadzone));
+    // sdl flips y-axis compared to xinput
+    x *= (1.0f / (1.0f - deadzone));
+    y *= (-1.0f / (1.0f - deadzone));
 
     return std::make_pair(x, y);
 }
@@ -593,15 +604,6 @@ internal void sdl_process_controller_digital_button(
     new_state->num_half_transition =
             old_state->num_half_transition + transition_amount;
 }
-
-#if 0
-internal __inline__ volatile uint64_t __rdtsc(void)
-{
-  unsigned hi, lo;
-  __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
-  return ( (uint64_t)lo)|( ((uint64_t)hi)<<32 );
-}
-#endif
 
 // int if_rdtscp() {
 //     unsigned int edx = 0;
@@ -826,6 +828,8 @@ int main(int argc, char **argv)
                     right_stick_x, right_stick_y, kSdlRightThumbNormalizedDeadzone);
                 right_stick_x = right_stick_xy.first;
                 right_stick_y = right_stick_xy.second;
+                printf("left: x=%.2f, y=%.2f; right: x=%.2f, y=%.2f\n",
+                       left_stick_x, left_stick_y, right_stick_x, right_stick_y);
                 // std::stringstream ss;
                 // ss << "stickx = " << left_stick_x << " sticky=" << left_stick_y << std::endl;
                 // OutputDebugStringA(ss.str().c_str());

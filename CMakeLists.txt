@@ -6,6 +6,7 @@ project(handmade)
 
 set(CMAKE_VERBOSE_MAKEFILE on)
 
+set(CMAKE_CXX_STANDARD_REQUIRED on)
 set(CMAKE_CXX_STANDARD 11)
 
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR})
@@ -43,9 +44,6 @@ else()
   
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 endif()
-
-# Output info to console for display errors, and debugging
-message("cxx Flags: " ${CMAKE_CXX_FLAGS})
 
 # Subdirectory where CMakeLists.txt exists
 add_subdirectory(${PROJECT_SOURCE_DIR}/code)

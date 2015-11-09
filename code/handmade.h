@@ -14,7 +14,7 @@
   Utilities
 */
 #if HANDMADE_DIAGNOSTIC
-#define assert(expr) if (!(expr)) { *(int*)nullptr = 0; }
+#define assert(expr) { if (!(expr)) { *(int*)0 = 0; } }
 #else
 #define assert(expr)
 #endif

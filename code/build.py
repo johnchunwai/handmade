@@ -47,9 +47,10 @@ if args.platform == "win32":
     cmake_gen.extend(['-G', 'Visual Studio 14 2015 Win64'])
     cmake_build.extend(["--config", args.build])
 elif args.platform == "linux":
+    # alternative is GNU/AppleClang/MSVC
     cmake_gen.extend(
-        ["-DCMAKE_BUILD_TYPE={}".format(args.build),
-         "-DCMAKE_CXX_COMPILER_ID=Clang"])
+        ["-DCMAKE_BUILD_TYPE={}".format(args.build)])#,
+#         "-DCMAKE_CXX_COMPILER_ID=Clang"])
 
 cmake_gen.append("-Duse_sdl={}".format(bool_2_on_off(args.sdl)))
 cmake_gen.append("-Ddiagnostic={}".format(bool_2_on_off(args.diagnostic)))
