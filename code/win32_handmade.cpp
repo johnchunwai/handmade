@@ -117,6 +117,22 @@ global_variable XInputSetStateType *xinput_set_state_ = xinput_set_state_stub;
                                                       LPUNKNOWN)
 typedef DIRECT_SOUND_CREATE(DirectSoundCreateType);
 
+internal void* win32_alloc_zeroed(void *base_addr, size_t length)
+{
+    // Guarantee to be allocation granularity (64KB) aligned
+    // commited to page boundary (4KB), but the rest are wasted space
+    // memory auto clears to 0
+    // freed automatically when app terminates
+    void *memory = VirtualAlloc(base_addr, length,
+                                MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    assert(memory);
+    return memory;
+}
+
+internal void win32_free(void *memory)
+{
+    VirtualFree(memory, 0, MEM_RELEASE);
+}
 
 #if HANDMADE_DEV_BUILD
 
@@ -142,13 +158,12 @@ internal debug_read_file_result debug_platform_read_entire_file(
             // commited to page boundary (4KB), but the rest are wasted space
             // memory auto clears to 0
             // freed automatically when app terminates
-            result.content = VirtualAlloc(nullptr, result.size,
-                                  MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+            result.content = win32_alloc_zeroed(nullptr, result.size);
             if (result.content)
             {
                 DWORD bytes_read;
-                if (ReadFile(file, result.content, result.size, &bytes_read, 0) &&
-                    (result.size == bytes_read))
+                if (ReadFile(file, result.content, result.size, &bytes_read, 0)
+                    && (result.size == bytes_read))
                 {
                     // NOTE: file read successfully
                 }
@@ -178,7 +193,7 @@ internal debug_read_file_result debug_platform_read_entire_file(
 
 internal void debug_platform_free_file_memory(void *memory)
 {
-    VirtualFree(memory, 0, MEM_RELEASE);
+    win32_free(memory);
 }
 
 internal bool32 debug_platform_write_entire_file(const char *filename,
@@ -393,7 +408,7 @@ internal void win32_resize_backbuffer(win32_offscreen_buffer *buffer,
     // maybe don't free first, free after.
     if (buffer->memory)
     {
-        VirtualFree(buffer->memory, 0, MEM_RELEASE);
+        win32_free(buffer->memory);
         buffer->memory = nullptr;
     }
 
@@ -417,9 +432,7 @@ internal void win32_resize_backbuffer(win32_offscreen_buffer *buffer,
     // commited to page boundary (4KB), but the rest are wasted space
     // memory auto clears to 0
     // freed automatically when app terminates
-    buffer->memory = VirtualAlloc(nullptr, bitmap_mem_size,
-                                  MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    assert(buffer->memory);
+    buffer->memory = win32_alloc_zeroed(nullptr, bitmap_mem_size);
 }
 
 internal void win32_display_offscreen_buffer(const win32_offscreen_buffer *buffer,
@@ -737,10 +750,8 @@ int32_t CALLBACK wWinMain(
         // commited to page boundary (4KB), but the rest are wasted space
         // memory auto clears to 0
         // freed automatically when app terminates
-        samples = static_cast<int16_t*>(VirtualAlloc(
-            nullptr, sound_output.sound_buffer_size,
-            MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
-        assert(samples);
+        samples = static_cast<int16_t*>(win32_alloc_zeroed(
+            nullptr, sound_output.sound_buffer_size));
     }
 
     // input
@@ -763,8 +774,7 @@ int32_t CALLBACK wWinMain(
     // commited to page boundary (4KB), but the rest are wasted space
     // memory auto clears to 0
     // freed automatically when app terminates
-    memory.permanent_storage = VirtualAlloc(base_memory_ptr, total_size,
-            MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    memory.permanent_storage = win32_alloc_zeroed(base_memory_ptr, total_size);
     memory.transient_storage = static_cast<int8_t*>(memory.permanent_storage) +
             memory.permanent_storage_size;
     if (g_backbuffer.memory && samples && memory.permanent_storage &&

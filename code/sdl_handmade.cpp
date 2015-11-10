@@ -63,6 +63,10 @@ constexpr real32 kEpsilonReal32 = 0.00001f;
 
 internal void* platform_alloc_zeroed(void *base_addr, size_t length)
 {
+    // Guarantee to be allocation granularity (64KB) aligned
+    // commited to page boundary (4KB), but the rest are wasted space
+    // memory auto clears to 0
+    // freed automatically when app terminates
     void *memory = VirtualAlloc(base_addr, length,
                                 MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     assert(memory);
