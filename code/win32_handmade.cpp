@@ -169,7 +169,7 @@ internal debug_read_file_result debug_platform_read_entire_file(
                 }
                 else
                 {
-                    debug_platform_free_file_memory(result.content);
+                    debug_platform_free_file_memory(&result);
                     result.content = nullptr;
                 }
             }
@@ -191,9 +191,11 @@ internal debug_read_file_result debug_platform_read_entire_file(
     return result;
 }
 
-internal void debug_platform_free_file_memory(void *memory)
+internal void debug_platform_free_file_memory(debug_read_file_result *file_mem)
 {
     win32_free(memory);
+    file_mem->content = nullptr;
+    file_mem->size = 0;
 }
 
 internal bool32 debug_platform_write_entire_file(const char *filename,
