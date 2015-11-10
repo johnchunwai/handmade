@@ -5,7 +5,8 @@ internal void game_output_sound(game_sound_buffer *sound_buffer, real32 tone_hz)
     // Just do a sine wave
     local_persist real32 sine_t = 0.0f;
     int16_t tone_volume = 1000;
-    real32 wave_period_sample_count = static_cast<real32>(sound_buffer->samples_per_sec) / tone_hz;
+    real32 wave_period_sample_count =
+            static_cast<real32>(sound_buffer->samples_per_sec) / tone_hz;
     
     int16_t *sample_out = sound_buffer->samples;
     for (uint32_t sample_index = 0;
@@ -18,7 +19,8 @@ internal void game_output_sound(game_sound_buffer *sound_buffer, real32 tone_hz)
         *sample_out++ = sample_val;
         // advance sine t by 1 sample
         sine_t += 1.0f * 2.0f * kPiReal32 / wave_period_sample_count;
-        // cap the sine t within a 2*PI to avoid losing floating point precision when sine t is large
+        // cap the sine t within a 2*PI to avoid losing floating point precision
+        // when sine t is large
         if (sine_t > 2.0f * kPiReal32)
         {
             sine_t -= 2.0f * kPiReal32;
@@ -26,7 +28,8 @@ internal void game_output_sound(game_sound_buffer *sound_buffer, real32 tone_hz)
     }
 }
 
-internal void render_weird_gradient(game_offscreen_buffer *buffer, int32_t blue_offset, int32_t green_offset)
+internal void render_weird_gradient(game_offscreen_buffer *buffer,
+                                    int32_t blue_offset, int32_t green_offset)
 {
     // draw something
     uint8_t *row = static_cast<uint8_t*>(buffer->memory);
@@ -66,6 +69,16 @@ internal void game_update_and_render(game_memory *memory,
             static_cast<game_state*>(memory->permanent_storage);
     if (!memory->is_initialized)
     {
+        char *filename = __FILE__;
+        debug_read_file_result read_result =
+                debug_platform_read_entire_file(filename);
+        if (read_result.content)
+        {
+            debug_platform_write_entire_file("test.out", read_result.size,
+                                             read_result.content);
+            debug_platform_free_file_memory(read_result.content);
+        }
+        
         // memory is already zeroed
         // state->blue_offset = 0;
         // state->green_offset = 0;

@@ -118,6 +118,103 @@ global_variable XInputSetStateType *xinput_set_state_ = xinput_set_state_stub;
 typedef DIRECT_SOUND_CREATE(DirectSoundCreateType);
 
 
+#if HANDMADE_DEV_BUILD
+
+// for debugging only, so just ansi filenames
+internal debug_read_file_result debug_platform_read_entire_file(
+    const char *filename)
+{
+    // open file
+    // get file size
+    // alloc buffer
+    // read entire file
+    // close file
+    debug_read_file_result result {};
+    HANDLE file = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, nullptr,
+                              OPEN_EXISTING, 0, nullptr);
+    if (file != INVALID_HANDLE_VALUE)
+    {
+        LARGE_INTEGER file_size {};
+        if (GetFileSizeEx(file, &file_size))
+        {
+            result.size = safe_truncate_uint64(file_size.QuadPart);
+            // Guarantee to be allocation granularity (64KB) aligned
+            // commited to page boundary (4KB), but the rest are wasted space
+            // memory auto clears to 0
+            // freed automatically when app terminates
+            result.content = VirtualAlloc(nullptr, result.size,
+                                  MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+            if (result.content)
+            {
+                DWORD bytes_read;
+                if (ReadFile(file, result.content, result.size, &bytes_read, 0) &&
+                    (result.size == bytes_read))
+                {
+                    // NOTE: file read successfully
+                }
+                else
+                {
+                    debug_platform_free_file_memory(result.content);
+                    result.content = nullptr;
+                }
+            }
+            else
+            {
+                // TODO: logging
+            }
+        }
+        else
+        {
+            // TODO: logging
+        }
+        CloseHandle(file);
+    }
+    else
+    {
+        // TODO: logging
+    }
+    return result;
+}
+
+internal void debug_platform_free_file_memory(void *memory)
+{
+    VirtualFree(memory, 0, MEM_RELEASE);
+}
+
+internal bool32 debug_platform_write_entire_file(const char *filename,
+                                                 uint32_t mem_size,
+                                                 void *memory)
+{
+    // open file
+    // write entire file
+    // close file
+    bool32 result = false;
+    HANDLE file = CreateFileA(filename, GENERIC_WRITE, 0, nullptr,
+                              CREATE_ALWAYS, 0, nullptr);
+    if (file != INVALID_HANDLE_VALUE)
+    {
+        DWORD bytes_written;
+        if (WriteFile(file, memory, mem_size, &bytes_written, nullptr) )
+        {
+            result = mem_size == bytes_written;
+        }
+        else
+        {
+            // TODO: logging
+        }
+        CloseHandle(file);
+    }
+    else
+    {
+        // TODO: logging
+    }
+
+    return result;
+}
+
+#endif // HANDMADE_DEV_BUILD
+
+
 internal void win32_load_xinput()
 {
     constexpr char *xinput_dlls[] = {

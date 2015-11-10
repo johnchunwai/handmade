@@ -27,10 +27,38 @@ constexpr uint64_t megabyte(uint64_t val) { return kilobyte(val) * 1024ULL; }
 constexpr uint64_t gigabyte(uint64_t val) { return megabyte(val) * 1024ULL; }
 constexpr uint64_t terabyte(uint64_t val) { return gigabyte(val) * 1024ULL; }
 
+inline uint32_t safe_truncate_uint64(uint64_t val)
+{
+    assert(val <= UINT32_MAX);
+    uint32_t result = static_cast<uint32_t>(val);
+    return result;
+}
+
+/*
+  TODO: Services that the platform layer provides to the game.
+*/
+
+#if HANDMADE_DEV_BUILD
+struct debug_read_file_result
+{
+    void *content;
+    uint32_t size;
+};
+// for debugging only, so just ansi filenames
+internal debug_read_file_result debug_platform_read_entire_file(
+    const char *filename);
+internal void debug_platform_free_file_memory(void *memory);
+internal bool32 debug_platform_write_entire_file(const char *filename,
+                                                 uint32_t mem_size,
+                                                 void *memory);
+#endif // HANDMADE_DEV_BUILD
+
+
 /*
   NOTE: Services that the game provides to the platform layer.
 */
-// 4 THINGS: timing, controller/keyboard input, bitmap buffer to use, sound buffer to use
+// 4 THINGS: timing, controller/keyboard input, bitmap buffer to use, sound
+//           buffer to use
 struct game_offscreen_buffer
 {
     // pixels are 32-bit wide, memory order BB GG RR xx
@@ -55,7 +83,7 @@ struct win32_sound_output
     uint32_t sec_to_buffer;
 
     // calculated values
-    uint32_t latency_sample_count;  // to minimize delay when we want to change the sound
+    uint32_t latency_sample_count;  // to minimize delay when changing the sound
     uint32_t bytes_per_sample;
     uint32_t sound_buffer_size;
 };
@@ -123,10 +151,6 @@ internal void game_update_and_render(game_memory *memory,
                                      game_offscreen_buffer *buffer,
                                      game_sound_buffer *sound_buffer,
                                      const game_input *input);
-
-/*
-  TODO: Services that the platform layer provides to the game.
-*/
 
 /*
  */
