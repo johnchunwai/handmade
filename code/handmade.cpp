@@ -69,14 +69,14 @@ internal void game_update_and_render(game_memory *memory,
             static_cast<game_state*>(memory->permanent_storage);
     if (!memory->is_initialized)
     {
-        char *filename = __FILE__;
+        const char *filename = __FILE__;
         debug_read_file_result read_result =
                 debug_platform_read_entire_file(filename);
         if (read_result.content)
         {
-            debug_platform_write_entire_file("test.out", read_result.size,
-                                             read_result.content);
-            debug_platform_free_file_memory(read_result.content);
+            debug_platform_write_entire_file("test.out", read_result.content,
+                                             read_result.size);
+            debug_platform_free_file_memory(&read_result);
         }
         
         // memory is already zeroed

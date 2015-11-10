@@ -176,6 +176,110 @@ struct sdl_game_controllers
 global_variable bool32 g_running = false;
 global_variable sdl_offscreen_buffer g_backbuffer {};
 
+
+internal void sdl_log_error(const char* func_name)
+{
+    printf("%s failed: %s\n", func_name, SDL_GetError());
+}
+
+#if HANDMADE_DEV_BUILD
+
+// for debugging only, so just ansi filenames
+internal debug_read_file_result debug_platform_read_entire_file(
+    const char *filename)
+{
+    // open file
+    // get file size
+    // alloc buffer
+    // read entire file
+    // close file
+    debug_read_file_result result {};
+    SDL_RWops *file = SDL_RWFromFile(filename, "rb");
+    if (file)
+    {
+        int64_t filesize = SDL_RWsize(file);
+        if (filesize >= 0)
+        {
+            result.size = safe_truncate_uint64(filesize);
+            result.content = platform_alloc_zeroed(nullptr, result.size);
+            if (result.content)
+            {
+                if (1 == SDL_RWread(file, result.content, result.size, 1))
+                {
+                    // NOTE: file read successfully
+                }
+                else
+                {
+                    sdl_log_error("SDL_RWread");
+                    debug_platform_free_file_memory(&result);
+                }
+            }
+            else
+            {
+                // TODO: logging
+            }
+        }
+        else
+        {
+            // TODO: logging
+            sdl_log_error("SDL_RWops");
+        }
+        if (0 != SDL_RWclose(file))
+        {
+            sdl_log_error("SDL_RWclose");
+        }
+    }
+    else
+    {
+        // TODO: logging
+        sdl_log_error("SDL_RWFromFile");
+    }
+    return result;
+}
+
+internal void debug_platform_free_file_memory(debug_read_file_result *file_mem)
+{
+    platform_free(file_mem->content, file_mem->size);
+    file_mem->content = nullptr;
+    file_mem->size = 0;
+}
+
+internal bool32 debug_platform_write_entire_file(const char *filename,
+                                                 void *memory,
+                                                 uint32_t mem_size)
+{
+    // open file
+    // write entire file
+    // close file
+    bool32 result = false;
+    SDL_RWops *file = SDL_RWFromFile(filename, "wb");
+    if (file)
+    {
+        if (SDL_RWwrite(file, memory, mem_size, 1) == 1)
+        {
+            result = true;
+        }
+        else
+        {
+            // TODO: logging
+            sdl_log_error("SDL_RWwrite");
+        }
+        if (0 != SDL_RWclose(file))
+        {
+            sdl_log_error("SDL_RWclose");
+        }
+    }
+    else
+    {
+        // TODO: logging
+        sdl_log_error("SDL_RWFromFile");
+    }
+
+    return result;
+}
+
+#endif // HANDMADE_DEV_BUILD
+
 internal void sdl_cleanup(SDL_Window *window, SDL_Renderer *renderer,
                           SDL_Texture *texture, SDL_AudioDeviceID audio_dev_id,
                           sdl_game_controllers *controllers)

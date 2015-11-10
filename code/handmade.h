@@ -47,10 +47,10 @@ struct debug_read_file_result
 // for debugging only, so just ansi filenames
 internal debug_read_file_result debug_platform_read_entire_file(
     const char *filename);
-internal void debug_platform_free_file_memory(void *memory);
+internal void debug_platform_free_file_memory(debug_read_file_result *file_mem);
 internal bool32 debug_platform_write_entire_file(const char *filename,
-                                                 uint32_t mem_size,
-                                                 void *memory);
+                                                 void *memory,
+                                                 uint32_t mem_size);
 #endif // HANDMADE_DEV_BUILD
 
 

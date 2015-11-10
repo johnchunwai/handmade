@@ -197,8 +197,8 @@ internal void debug_platform_free_file_memory(void *memory)
 }
 
 internal bool32 debug_platform_write_entire_file(const char *filename,
-                                                 uint32_t mem_size,
-                                                 void *memory)
+                                                 void *memory,
+                                                 uint32_t mem_size)
 {
     // open file
     // write entire file
