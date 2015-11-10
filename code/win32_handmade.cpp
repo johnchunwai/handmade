@@ -193,7 +193,7 @@ internal debug_read_file_result debug_platform_read_entire_file(
 
 internal void debug_platform_free_file_memory(debug_read_file_result *file_mem)
 {
-    win32_free(memory);
+    win32_free(file_mem->content);
     file_mem->content = nullptr;
     file_mem->size = 0;
 }
