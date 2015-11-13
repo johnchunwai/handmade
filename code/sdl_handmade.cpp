@@ -498,8 +498,9 @@ internal SDL_AudioDeviceID sdl_init_sound(sdl_sound_output *sound_output)
     }
     else
     {
-        printf("Init audio: samples=%d, buffer size=%d, silience=%d\n",
-               obtained.samples, obtained.size, obtained.silence);
+        printf("Init audio: samples=%d (want=%d), buffer size=%d, silience=%d\n",
+               obtained.samples, desired.samples,
+               obtained.size, obtained.silence);
         sound_output->sdl_audio_buffer_size_in_samples = obtained.samples;
         sound_output->sdl_audio_buffer_size_in_bytes = obtained.size;
         HANDMADE_ASSERT(obtained.silence == 0);
