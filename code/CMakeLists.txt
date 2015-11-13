@@ -25,7 +25,12 @@ if(use_sdl)
 elseif(WIN32)
 
   set(handmade_SRCS win32_handmade.cpp)
-  add_executable(handmade WIN32 ${handmade_SRCS})
+
+  if(diagnostic)
+    add_executable(handmade ${handmade_SRCS})
+  else()
+    add_executable(handmade WIN32 ${handmade_SRCS})
+  endif(diagnostic)
 
 else()
 

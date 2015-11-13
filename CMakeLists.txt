@@ -17,14 +17,14 @@ option(use_sdl "use_sdl" off)
 message("use_sdl: " ${use_sdl})
 option(diagnostic "diagnotic" off)
 message("diagnostic: " ${diagnostic})
-option(dev_build "dev_build" off)
-message("dev_build: " ${dev_build})
+option(internal_build "internal_build" off)
+message("internal_build: " ${internal_build})
 
 if(diagnostic)
   add_definitions(-DHANDMADE_DIAGNOSTIC)
 endif()
-if(dev_build)
-  add_definitions(-DHANDMADE_DEV_BUILD)
+if(internal_build)
+  add_definitions(-DHANDMADE_INTERNAL_BUILD)
 endif()
 
 if(WIN32)
@@ -35,7 +35,16 @@ if(WIN32)
   
   add_definitions(-D_UNICODE -DUNICODE)
   # Set the compiler flags and options.
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
+  # added by cmake:
+  # /Zi pdb; show full path on warnings/errors
+  # consider /Z7 (google /Zi vs /Z7)
+  # /O2 for release (implies /Oi enable intrinsic)
+  # added myself:
+  # /W4 warning level 4
+  # /wd4201 ignore warning 4201 (nonstandard: nameless struct in union)
+  # /Oi enable intrinsic even for debug build so behavior won't change
+  # /GR- disable RTTI (including dynamic_cast)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR- /Oi /W4 /wd4201")
 else()
   if(use_sdl)
     # extra source (eg. for finding sdl2 lib)

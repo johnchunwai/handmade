@@ -1,23 +1,59 @@
 #pragma once
 
-/*
-  HANDMADE_DIAGNOSTIC:
-    0 - build with diagnostic code present
-    1 - build with diagnostic code removed
+//
+// HANDMADE_DIAGNOSTIC:
+//   0 - build with diagnostic code present
+//   1 - build with diagnostic code removed
+//
+// HANDMADE_INTERNAL_BUILD:
+//   0 - build for internal development
+//   1 - build for public release
+//
 
-  HANDMADE_DEV_BUILD:
-    0 - build for internal development
-    1 - build for public release
- */
 
-/*
-  Utilities
-*/
+//
+// Utilities
+//
+
 #if HANDMADE_DIAGNOSTIC
-#define assert(expr) { if (!(expr)) { *(int*)0 = 0; } }
+
+//
+// May be better just use:
+// https://github.com/gpakosz/Assert
+//
+int assert_handler(const char *expr, const char *file, int line)
+{
+    fprintf(stderr, "Assertion (%s) failed in %s (%d)\n", expr, file, line);
+    return 1;
+}
+
+#if defined(WIN32)
+#  include <intrin.h>
+#  define HANDMADE_DEBUG_BREAK() __debugbreak()
 #else
-#define assert(expr)
+#  if defined(__APPLE__)
+#  include <TargetConditionals.h>
+#  endif
+#  if defined(__clang__) && !TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
+#    define HANDMADE_DEBUG_BREAK() __builtin_debugtrap()
+#  elif defined(linux) || defined(__linux) || defined(__linux__) || defined(__APPLE__)
+#    include <signal.h>
+#    define HANDMADE_DEBUG_BREAK() raise(SIGTRAP)
+#  elif defined(__GNUC__)
+#    define HANDMADE_DEBUG_BREAK() __builtin_trap()
+#  else
+#    define HANDMADE_DEBUG_BREAK() ((void)0)
+#  endif
 #endif
+
+#define HANDMADE_ASSERT(x) ((void)(!(x) && \
+                                   assert_handler(#x, __FILE__, __LINE__) && \
+                                   (HANDMADE_DEBUG_BREAK(), 1)))
+#else  // HANDMADE_DIAGNOSTIC
+
+#define HANDMADE_ASSERT(x) (void)(true ? (void)0 : ((void)(x)))
+
+#endif  // HANDMADE_DIAGNOSTIC
 
 template<typename T, size_t size>
 constexpr size_t array_length(T (&arr)[size]) { return size; }
@@ -27,10 +63,24 @@ constexpr uint64_t megabyte(uint64_t val) { return kilobyte(val) * 1024ULL; }
 constexpr uint64_t gigabyte(uint64_t val) { return megabyte(val) * 1024ULL; }
 constexpr uint64_t terabyte(uint64_t val) { return gigabyte(val) * 1024ULL; }
 
-inline uint32_t safe_truncate_uint64(uint64_t val)
+inline uint32_t safe_truncate_uint64_uint32(uint64_t val)
 {
-    assert(val <= UINT32_MAX);
+    HANDMADE_ASSERT(val <= UINT32_MAX);
     uint32_t result = static_cast<uint32_t>(val);
+    return result;
+}
+
+inline uint16_t safe_truncate_int32_uint16(int32_t val)
+{
+    HANDMADE_ASSERT(val <= UINT16_MAX);
+    uint16_t result = static_cast<uint16_t>(val);
+    return result;
+}
+
+inline uint8_t safe_truncate_int32_uint8(int32_t val)
+{
+    HANDMADE_ASSERT(val <= UINT8_MAX);
+    uint8_t result = static_cast<uint8_t>(val);
     return result;
 }
 
@@ -38,7 +88,7 @@ inline uint32_t safe_truncate_uint64(uint64_t val)
   TODO: Services that the platform layer provides to the game.
 */
 
-#if HANDMADE_DEV_BUILD
+#if HANDMADE_INTERNAL_BUILD
 struct debug_read_file_result
 {
     void *content;
@@ -51,7 +101,7 @@ internal void debug_platform_free_file_memory(debug_read_file_result *file_mem);
 internal bool32 debug_platform_write_entire_file(const char *filename,
                                                  void *memory,
                                                  uint32_t mem_size);
-#endif // HANDMADE_DEV_BUILD
+#endif // HANDMADE_INTERNAL_BUILD
 
 
 /*

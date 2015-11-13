@@ -69,11 +69,11 @@ internal void* platform_alloc_zeroed(void *base_addr, size_t length)
     // freed automatically when app terminates
     void *memory = VirtualAlloc(base_addr, length,
                                 MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    assert(memory);
+    HANDMADE_ASSERT(memory);
     return memory;
 }
 
-internal void platform_free(void *memory, size_t length)
+internal void platform_free(void *memory, size_t)
 {
     VirtualFree(memory, 0, MEM_RELEASE);
 }
@@ -94,7 +94,7 @@ internal void* platform_alloc_zeroed(void *base_addr, size_t length)
                         PROT_READ | PROT_WRITE,
                         MAP_ANONYMOUS | MAP_PRIVATE,
                         -1, 0);
-    assert(memory && memory != MAP_FAILED);
+    HANDMADE_ASSERT(memory && memory != MAP_FAILED);
     return memory;
 }
 
@@ -145,24 +145,24 @@ struct sdl_offscreen_buffer
 struct sdl_sound_ring_buffer
 {
     size_t size;
-    volatile ptrdiff_t play_cursor;
+    volatile size_t play_cursor;
     void *memory;
 };
 
 struct sdl_sound_output
 {
     sdl_sound_ring_buffer ring_buffer;
-    int32_t running_sample_index;
-    int32_t num_sound_ch;
-    int32_t samples_per_sec;
-    int32_t sec_to_buffer;
+    uint32_t running_sample_index;
+    uint32_t num_sound_ch;
+    uint32_t samples_per_sec;
+    uint32_t sec_to_buffer;
     SDL_AudioFormat sdl_audio_format;
-    int32_t sdl_audio_buffer_size_in_samples;
+    uint32_t sdl_audio_buffer_size_in_samples;
 
     // calculated values
-    int32_t latency_sample_count;  // to minimize delay when we want to change the sound
-    int32_t bytes_per_sample;
-    int32_t sdl_audio_buffer_size_in_bytes;
+    uint32_t latency_sample_count;  // to minimize delay when we want to change the sound
+    uint32_t bytes_per_sample;
+    uint32_t sdl_audio_buffer_size_in_bytes;
 };
 
 struct sdl_game_controllers
@@ -182,7 +182,7 @@ internal void sdl_log_error(const char* func_name)
     printf("%s failed: %s\n", func_name, SDL_GetError());
 }
 
-#if HANDMADE_DEV_BUILD
+#if HANDMADE_INTERNAL_BUILD
 
 // for debugging only, so just ansi filenames
 internal debug_read_file_result debug_platform_read_entire_file(
@@ -200,7 +200,7 @@ internal debug_read_file_result debug_platform_read_entire_file(
         int64_t filesize = SDL_RWsize(file);
         if (filesize >= 0)
         {
-            result.size = safe_truncate_uint64(filesize);
+            result.size = safe_truncate_uint64_uint32(filesize);
             result.content = platform_alloc_zeroed(nullptr, result.size);
             if (result.content)
             {
@@ -278,7 +278,7 @@ internal bool32 debug_platform_write_entire_file(const char *filename,
     return result;
 }
 
-#endif // HANDMADE_DEV_BUILD
+#endif // HANDMADE_INTERNAL_BUILD
 
 internal void sdl_cleanup(SDL_Window *window, SDL_Renderer *renderer,
                           SDL_Texture *texture, SDL_AudioDeviceID audio_dev_id,
@@ -428,8 +428,8 @@ internal bool32 sdl_handle_event(SDL_Event *event)
 }
 
 internal bool32 sdl_resize_backbuffer(sdl_offscreen_buffer *buffer,
-                                       SDL_Renderer *renderer,
-                                       int32_t width, int32_t height)
+                                      SDL_Renderer *renderer,
+                                      int32_t width, int32_t height)
 {
     bool32 succeeded = true;
     constexpr int32_t bytes_per_pixel = 4;
@@ -476,8 +476,9 @@ internal SDL_AudioDeviceID sdl_init_sound(sdl_sound_output *sound_output)
     SDL_AudioSpec obtained {};
     desired.freq = sound_output->samples_per_sec;
     desired.format = sound_output->sdl_audio_format;
-    desired.channels = sound_output->num_sound_ch;
-    desired.samples = sound_output->sdl_audio_buffer_size_in_samples;
+    desired.channels = safe_truncate_int32_uint8(sound_output->num_sound_ch);
+    desired.samples = safe_truncate_int32_uint16(
+        sound_output->sdl_audio_buffer_size_in_samples);
     desired.callback = sdl_audio_callback;
     desired.userdata = static_cast<void*>(&sound_output->ring_buffer);
     SDL_AudioDeviceID audio_dev_id = SDL_OpenAudioDevice(
@@ -501,7 +502,7 @@ internal SDL_AudioDeviceID sdl_init_sound(sdl_sound_output *sound_output)
                obtained.samples, obtained.size, obtained.silence);
         sound_output->sdl_audio_buffer_size_in_samples = obtained.samples;
         sound_output->sdl_audio_buffer_size_in_bytes = obtained.size;
-        assert(obtained.silence == 0);
+        HANDMADE_ASSERT(obtained.silence == 0);
         // init ring buffer
         sound_output->ring_buffer.memory = platform_alloc_zeroed(
             nullptr, sound_output->ring_buffer.size);
@@ -512,8 +513,8 @@ internal SDL_AudioDeviceID sdl_init_sound(sdl_sound_output *sound_output)
 
 internal void sdl_fill_sound_buffer(sdl_sound_output *sound_output,
                                     const game_sound_buffer *source_buffer,
-                                    ptrdiff_t byte_to_lock,
-                                    ptrdiff_t bytes_to_write)
+                                    size_t byte_to_lock,
+                                    size_t bytes_to_write)
 {
     if (bytes_to_write == 0)
     {
@@ -542,15 +543,17 @@ internal void sdl_fill_sound_buffer(sdl_sound_output *sound_output,
     for (int32_t region_index = 0; region_index < max_regions; ++region_index)
     {
         // region must be a multiple of full sample 
-        assert(0 == (region_sizes[region_index] % sound_output->bytes_per_sample));
+        HANDMADE_ASSERT(0 == (region_sizes[region_index] %
+                              sound_output->bytes_per_sample));
             
         std::memcpy(regions[region_index], samples, region_sizes[region_index]);
         samples += region_sizes[region_index];
-        sound_output->running_sample_index += region_sizes[region_index]
-                / sound_output->bytes_per_sample;
+        sound_output->running_sample_index += safe_truncate_uint64_uint32(
+            region_sizes[region_index] / sound_output->bytes_per_sample);
         // int16_t *sample_out = static_cast<int16_t*>(regions[region_index]);
         // for (DWORD sample_index = 0,
-        //              sample_end = region_sizes[region_index] / sound_output->bytes_per_sample;
+        //              sample_end = region_sizes[region_index] /
+        //                           sound_output->bytes_per_sample;
         //      sample_index < sample_end;
         //      ++sample_index)
         // {
@@ -678,7 +681,7 @@ void sdl_init_controllers(sdl_game_controllers *controllers,
     {
         SDL_Joystick *joystick = SDL_GameControllerGetJoystick(
             controllers->controllers[controller_index]);
-        assert(joystick || !"failed to get joystick from controller");
+        HANDMADE_ASSERT(joystick || !"failed to get joystick from controller");
         SDL_Haptic *haptic = SDL_HapticOpenFromJoystick(joystick);
         if (haptic)
         {
@@ -728,7 +731,7 @@ internal void sdl_process_controller_digital_button(
 //     return (edx >> 27) & 0x1;
 // }
 
-int main(int argc, char **argv)
+int main(int, char **)
 {
     // if (if_rdtscp())
     // {
@@ -824,7 +827,7 @@ int main(int argc, char **argv)
     */
 
     // game memory
-#if HANDMADE_DEV_BUILD
+#if HANDMADE_INTERNAL_BUILD
     void *base_memory_ptr = reinterpret_cast<void*>(terabyte(2ULL));
 #else
     void *base_memory_ptr = nullptr;
@@ -971,8 +974,8 @@ int main(int argc, char **argv)
             //     // if we play for infinite, we can use SDL_HapticRumbleStop()
             // }
 
-            ptrdiff_t byte_to_lock = 0;
-            ptrdiff_t bytes_to_write = 0;
+            size_t byte_to_lock = 0;
+            size_t bytes_to_write = 0;
             if (audio_dev_id != 0)
             {
                 // fill the buffer till the play cursor + latency,
@@ -983,7 +986,7 @@ int main(int argc, char **argv)
 
                 // avoid play cursor to change during this
                 SDL_LockAudioDevice(audio_dev_id);
-                ptrdiff_t target_to_cursor = (sound_output.ring_buffer.play_cursor +
+                size_t target_to_cursor = (sound_output.ring_buffer.play_cursor +
                                               sound_output.latency_sample_count *
                                               sound_output.bytes_per_sample) %
                         sound_output.ring_buffer.size;
@@ -1010,8 +1013,8 @@ int main(int argc, char **argv)
             if (bytes_to_write > 0)
             {
                 game_sound_buffer.samples = samples; 
-                game_sound_buffer.sample_count = bytes_to_write
-                        / sound_output.bytes_per_sample;
+                game_sound_buffer.sample_count = safe_truncate_uint64_uint32(
+                    bytes_to_write / sound_output.bytes_per_sample);
                 game_sound_buffer.samples_per_sec = sound_output.samples_per_sec;
             }
 

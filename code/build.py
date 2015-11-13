@@ -23,7 +23,7 @@ parser.add_argument("-b", "--build",
 parser.add_argument("-c", "--clean", action="store_true")
 parser.add_argument("-s", "--sdl", action="store_true")
 parser.add_argument("-d", "--diagnostic", action="store_true")
-parser.add_argument("--dev_build", action="store_true")
+parser.add_argument("-i", "--internal_build", action="store_true")
 args = parser.parse_args()
 
 build_dir = os.path.join("..", "..", "build")
@@ -54,7 +54,7 @@ elif args.platform == "linux":
 
 cmake_gen.append("-Duse_sdl={}".format(bool_2_on_off(args.sdl)))
 cmake_gen.append("-Ddiagnostic={}".format(bool_2_on_off(args.diagnostic)))
-cmake_gen.append("-Ddev_build={}".format(bool_2_on_off(args.dev_build)))
+cmake_gen.append("-Dinternal_build={}".format(bool_2_on_off(args.internal_build)))
 
 print(cmake_gen)
 print(cmake_build)

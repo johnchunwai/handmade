@@ -125,7 +125,7 @@ internal void* win32_alloc_zeroed(void *base_addr, size_t length)
     // freed automatically when app terminates
     void *memory = VirtualAlloc(base_addr, length,
                                 MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    assert(memory);
+    HANDMADE_ASSERT(memory);
     return memory;
 }
 
@@ -134,7 +134,7 @@ internal void win32_free(void *memory)
     VirtualFree(memory, 0, MEM_RELEASE);
 }
 
-#if HANDMADE_DEV_BUILD
+#if HANDMADE_INTERNAL_BUILD
 
 // for debugging only, so just ansi filenames
 internal debug_read_file_result debug_platform_read_entire_file(
@@ -153,7 +153,7 @@ internal debug_read_file_result debug_platform_read_entire_file(
         LARGE_INTEGER file_size {};
         if (GetFileSizeEx(file, &file_size))
         {
-            result.size = safe_truncate_uint64(file_size.QuadPart);
+            result.size = safe_truncate_uint64_uint32(file_size.QuadPart);
             // Guarantee to be allocation granularity (64KB) aligned
             // commited to page boundary (4KB), but the rest are wasted space
             // memory auto clears to 0
@@ -229,7 +229,7 @@ internal bool32 debug_platform_write_entire_file(const char *filename,
     return result;
 }
 
-#endif // HANDMADE_DEV_BUILD
+#endif // HANDMADE_INTERNAL_BUILD
 
 
 internal void win32_load_xinput()
@@ -248,7 +248,7 @@ internal void win32_load_xinput()
                 GetProcAddress(xinput_lib, "XInputGetState"));
             XInputSetState = reinterpret_cast<XInputSetStateType*>(
                 GetProcAddress(xinput_lib, "XInputSetState"));
-            assert(XInputGetState && XInputSetState);
+            HANDMADE_ASSERT(XInputGetState && XInputSetState);
             break;
         }
     }
@@ -448,7 +448,7 @@ internal void win32_display_offscreen_buffer(const win32_offscreen_buffer *buffe
                                        0, 0, buffer->width, buffer->height,
                                        buffer->memory, &buffer->info,
                                        DIB_RGB_COLORS, SRCCOPY);
-    assert(blt_result);
+    HANDMADE_ASSERT(blt_result);
 }
 
 internal LRESULT CALLBACK win32_wnd_proc(
@@ -649,7 +649,7 @@ internal void win32_fill_sound_buffer(win32_sound_output *sound_output,
         for (int32_t region_index = 0; region_index < max_regions; ++region_index)
         {
             // region must be a multiple of full sample 
-            assert(0 == (region_sizes[region_index] % sound_output->bytes_per_sample));
+            HANDMADE_ASSERT(0 == (region_sizes[region_index] % sound_output->bytes_per_sample));
             
             std::memcpy(regions[region_index], samples, region_sizes[region_index]);
             samples += region_sizes[region_index];
@@ -682,6 +682,15 @@ internal void win32_process_xinput_digital_button(game_button_state *new_state,
     new_state->num_half_transition = old_state->num_half_transition + transition_amount;
 }
 
+#if HANDMADE_DIAGNOSTIC
+
+int32_t main(int, const char**)
+{
+    return wWinMain(0, 0, 0, 0);
+}
+
+#endif  // HANDMADE_DIAGNOSTIC
+
 int32_t CALLBACK wWinMain(
     HINSTANCE window_instance,
     HINSTANCE,  // hPrevInst is useless
@@ -706,7 +715,7 @@ int32_t CALLBACK wWinMain(
     if (0 == wnd_class_atom)
     {
         win32_debug_print_last_error();
-        assert(0 != wnd_class_atom);
+        HANDMADE_ASSERT(0 != wnd_class_atom);
         return 0;
     }
 
@@ -718,7 +727,7 @@ int32_t CALLBACK wWinMain(
     if (hwnd == nullptr)
     {
         win32_debug_print_last_error();
-        assert(nullptr != hwnd);
+        HANDMADE_ASSERT(nullptr != hwnd);
         return 0;
     }
 
@@ -762,13 +771,13 @@ int32_t CALLBACK wWinMain(
     game_input *old_input = &input[1];
 
     // game memory
-#if HANDMADE_DEV_BUILD
+#if HANDMADE_INTERNAL_BUILD
     void *base_memory_ptr = reinterpret_cast<void*>(terabyte(2ULL));
 #else
     void *base_memory_ptr = nullptr;
 #endif
     game_memory memory {};
-    memory.permanent_storage_size = megabyte(64ULL);
+    memory.permanent_storage_size = 1;//megabyte(64ULL);
     memory.transient_storage_size = gigabyte(1ULL);
     uint64_t total_size = memory.permanent_storage_size +
             memory.transient_storage_size;
