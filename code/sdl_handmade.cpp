@@ -498,8 +498,9 @@ internal SDL_AudioDeviceID sdl_init_sound(sdl_sound_output *sound_output)
     }
     else
     {
-        printf("Init audio: samples=%d, buffer size=%d, silience=%d\n",
-               obtained.samples, obtained.size, obtained.silence);
+        printf("Init audio: samples=%d (want=%d), buffer size=%d, silience=%d\n",
+               obtained.samples, desired.samples,
+               obtained.size, obtained.silence);
         sound_output->sdl_audio_buffer_size_in_samples = obtained.samples;
         sound_output->sdl_audio_buffer_size_in_bytes = obtained.size;
         HANDMADE_ASSERT(obtained.silence == 0);
@@ -631,6 +632,7 @@ void sdl_init_controllers(sdl_game_controllers *controllers,
                           const char* mapping_file)
 {
     // add mapping first
+    // TODO: FixThis!!! always fail
     int32_t num_mappings = SDL_GameControllerAddMappingsFromFile(mapping_file);
     if (num_mappings < 0)
     {
