@@ -35,16 +35,29 @@ if(WIN32)
   
   add_definitions(-D_UNICODE -DUNICODE)
   # Set the compiler flags and options.
+  #
   # added by cmake:
-  # /Zi pdb; show full path on warnings/errors
-  # consider /Z7 (google /Zi vs /Z7)
-  # /O2 for release (implies /Oi enable intrinsic)
+  #   /Zi pdb; show full path on warnings/errors
+  #     consider /Z7 (google /Zi vs /Z7)
+  #   /O2 for release (implies /Oi enable intrinsic)
+  #   /EHsc - enables C++ exception (synchronous) but not async ones (structured)
+  #
   # added myself:
-  # /W4 warning level 4
-  # /wd4201 ignore warning 4201 (nonstandard: nameless struct in union)
-  # /Oi enable intrinsic even for debug build so behavior won't change
-  # /GR- disable RTTI (including dynamic_cast)
+  #   /W4 warning level 4
+  #   /wd4201 ignore warning 4201 (nonstandard: nameless struct in union)
+  #   /Oi enable intrinsic even for debug build so behavior won't change
+  #   /GR- disable RTTI (including dynamic_cast)
+  #   /MT or /MTd to statically link to c++ runtime library, so no need to
+  #     include distributable
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR- /Oi /W4 /wd4201")
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
+  # set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
+  # set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /MT")
+  # set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /MT")
+
+  # linker flags
+  # /MAP - generate map file
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /MAP")
 else()
   if(use_sdl)
     # extra source (eg. for finding sdl2 lib)

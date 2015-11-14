@@ -493,6 +493,7 @@ internal LRESULT CALLBACK win32_wnd_proc(
     case WM_KEYDOWN:
     case WM_KEYUP:
         {
+            HANDMADE_ASSERT(false);
             WPARAM vk_code = wparam;
             bool32 was_down = (lparam & (1 << 30));
             bool32 is_down = (lparam & (1 << 31));
@@ -678,9 +679,18 @@ internal void win32_process_xinput_digital_button(game_button_state *new_state,
                                                   uint32_t xinput_button_bit)
 {
     new_state->ended_down = pad->wButtons & xinput_button_bit;
-    int32_t transition_amount = (old_state->ended_down != new_state->ended_down) ? 1 : 0;
-    new_state->num_half_transition = old_state->num_half_transition + transition_amount;
+    int32_t transition_amount =
+            (old_state->ended_down != new_state->ended_down) ? 1 : 0;
+    new_state->num_half_transition = old_state->num_half_transition +
+            transition_amount;
 }
+
+internal void win32_process_kbd_msg(game_button_state *new_state, bool32 is_down)
+{
+    new_state->ended_down = is_down;
+    ++new_state->num_half_transition;
+}
+
 
 #if HANDMADE_DIAGNOSTIC
 
@@ -777,7 +787,7 @@ int32_t CALLBACK wWinMain(
     void *base_memory_ptr = nullptr;
 #endif
     game_memory memory {};
-    memory.permanent_storage_size = 1;//megabyte(64ULL);
+    memory.permanent_storage_size = megabyte(64ULL);
     memory.transient_storage_size = gigabyte(1ULL);
     uint64_t total_size = memory.permanent_storage_size +
             memory.transient_storage_size;
@@ -800,6 +810,10 @@ int32_t CALLBACK wWinMain(
         while (g_running)
         {
             MSG msg;
+            // TODO: FixThis!!! If only new is set to not down but old is down,
+            // it will continue to scroll each other frame forever.
+            game_controller_input *kbd_controller = &new_input->controllers[0];
+ 
             // BOOL msgResult = GetMessageW(&msg, nullptr, 0, 0);
             while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
                 // if (msgResult > 0)
@@ -809,8 +823,115 @@ int32_t CALLBACK wWinMain(
                     g_running = false;
                     break;
                 }
-                TranslateMessage(&msg);
-                DispatchMessageW(&msg);
+                switch (msg.message)
+                {
+                case WM_SYSKEYDOWN:
+                case WM_SYSKEYUP:
+                case WM_KEYDOWN:
+                case WM_KEYUP:
+                    {
+                        WPARAM vk_code = msg.wParam;
+                        bool32 was_down = (msg.lParam & (1 << 30)) ? true : false;
+                        bool32 is_down = !(msg.lParam & (1 << 31));
+                        if (is_down != was_down)
+                        {
+                            switch (vk_code)
+                            {
+                            case 'W':
+                                {
+                                    OutputDebugStringA("W\n");
+                                }
+                                break;
+                            case 'A':
+                                {
+                                    OutputDebugStringA("A\n");
+                                }
+                                break;
+                            case 'S':
+                                {
+                                    OutputDebugStringA("S\n");
+                                }
+                                break;
+                            case 'D':
+                                {
+                                    OutputDebugStringA("D\n");
+                                }
+                                break;
+                            case 'Q':
+                                {
+                                    win32_process_kbd_msg(
+                                        &kbd_controller->left_shoulder, is_down);
+                                }
+                                break;
+                            case 'E':
+                                {
+                                    win32_process_kbd_msg(
+                                        &kbd_controller->right_shoulder, is_down);
+                                }
+                                break;
+                            case VK_UP:
+                                {
+                                    win32_process_kbd_msg(&kbd_controller->y,
+                                                          is_down);
+                                 }
+                                break;
+                            case VK_DOWN:
+                                {
+                                    char buf[256];
+                                    sprintf(buf, "VK_DOWN: isdown=%d, wasdown=%d\n", is_down, was_down);
+                                    OutputDebugStringA(buf);
+                                    win32_process_kbd_msg(&kbd_controller->a,
+                                                          is_down);
+
+                                }
+                                break;
+                            case VK_LEFT:
+                                {
+                                    win32_process_kbd_msg(&kbd_controller->x,
+                                                          is_down);
+                                }
+                                break;
+                            case VK_RIGHT:
+                                {
+                                    win32_process_kbd_msg(&kbd_controller->b,
+                                                          is_down);
+                                }
+                                break;
+                            case VK_ESCAPE:
+                                {
+                                    g_running = false;
+                                }
+                                break;
+                            case VK_SPACE:
+                                {
+                                    OutputDebugStringA("SPACE\n");
+                                }
+                                break;
+                            case VK_RETURN:
+                                {
+                                    OutputDebugStringA("ENTER\n");
+                                }
+                                break;
+                            case VK_F4:
+                                {
+                                    bool32 alt_down = (msg.lParam & (1 << 29));
+                                    if (alt_down)
+                                    {
+                                        g_running = false;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                default:
+                    {
+                        TranslateMessage(&msg);
+                        DispatchMessageW(&msg);
+                    }
+                    break;
+                }
             }
 
             if (!g_running)
@@ -861,7 +982,7 @@ int32_t CALLBACK wWinMain(
                         pad, XINPUT_GAMEPAD_X);
                     win32_process_xinput_digital_button(
                         &new_controller->y,
-                        &old_controller->a,
+                        &old_controller->y,
                         pad, XINPUT_GAMEPAD_Y);
                     win32_process_xinput_digital_button(
                         &new_controller->left_shoulder,
