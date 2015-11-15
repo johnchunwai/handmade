@@ -32,6 +32,20 @@
 #define internal static
 #define class_scope static
 
+// printf macros that are not yet defined on MSVC
+#if _WIN64
+#define __PRIS_PREFIX "z"
+#else  // _WIN32
+#define __PRIS_PREFIX
+#endif // _WIN64
+
+#define PRIdS __PRIS_PREFIX "d"
+#define PRIxS __PRIS_PREFIX "x"
+#define PRIuS __PRIS_PREFIX "u"
+#define PRIXS __PRIS_PREFIX "X"
+#define PRIoS __PRIS_PREFIX "o"
+
+
 typedef int32_t bool32;
 typedef float real32;
 
@@ -765,7 +779,6 @@ internal void win32_process_wm_msg_synchonously(
                             OutputDebugStringA(buf);
                             win32_process_kbd_msg(&kbd_controller->a,
                                                   is_down);
-
                         }
                         break;
                     case VK_LEFT:

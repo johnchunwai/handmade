@@ -40,7 +40,7 @@ if(WIN32)
   #   /Zi pdb; show full path on warnings/errors
   #     consider /Z7 (google /Zi vs /Z7)
   #   /O2 for release (implies /Oi enable intrinsic)
-  #   /EHsc - enable C++ exception (synchronous) but not async ones (structured)
+  #   /EHsc - enable C++ exception which is fine but not SEH which sucks
   #   
   # added myself:
   #   /W4 warning level 4
@@ -53,6 +53,7 @@ if(WIN32)
   #     so we have stdio and stderr (call winmain from main); major,minor
   #     helps us target certain subsystems (eg. 5.00 (x86), 5.02 (x64), 1.0
   #     boot app))
+  #   /WX treat warnings as errors
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR- /Oi /W4 /wd4201")
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
   # set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
@@ -70,8 +71,22 @@ else()
     # extra source (eg. for finding sdl2 lib)
     set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake_linux")
   endif(use_sdl)
-  
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+
+  # Set the compiler flags and options.
+  #
+  # added by cmake:
+  #   c++ exception handling is enabled by default, no need to enable
+  #   
+  # added myself:
+  #   -Werror treat warnings as errors
+  #   -Wno-error=<err> keep warning for <err> while not treat as error
+  #   -Weverything - really enable all warnings
+  #   -fno-rtti - disable rtti
+  #   -m32 - cross compile 32bit version (apt-get install gcc-multilib
+  #     g++-multilib libsdl2<version>:i386)
+  #   -v - verbose
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror \
+-Wno-error=unused-variable -fno-rtti -v")
 endif()
 
 # Subdirectory where CMakeLists.txt exists

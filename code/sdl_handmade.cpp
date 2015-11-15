@@ -37,10 +37,26 @@
 #define internal static
 #define class_scope static
 
+// printf macros that are not yet defined
+#if __SIZEOF_SIZE_T__ == 8
+#define __PRIS_PREFIX "z"
+#elif __SIZEOF_SIZE_T__ == 4
+#define __PRIS_PREFIX
+#else
+#error "Unsupported __SIZEOF_SIZE_T__ " #__SIZEOF_SIZE_T__
+#endif // __SIZEOF_SIZE_T__
+
+#define PRIdS __PRIS_PREFIX "d"
+#define PRIxS __PRIS_PREFIX "x"
+#define PRIuS __PRIS_PREFIX "u"
+#define PRIXS __PRIS_PREFIX "X"
+#define PRIoS __PRIS_PREFIX "o"
+
 typedef int32_t bool32;
 typedef float real32;
 typedef double real64;
 typedef std::chrono::duration<real32, std::ratio<1, 1000>> chrono_duration_ms;
+
 
 // constants
 constexpr real32 kPiReal32 = 3.14159265359f;
@@ -319,112 +335,6 @@ internal void sdl_cleanup(SDL_Window *window, SDL_Renderer *renderer,
         SDL_DestroyWindow (window);
     }
     SDL_Quit();
-}
-
-internal bool32 sdl_handle_event(SDL_Event *event)
-{
-    bool32 running = true;
-    switch (event->type)
-    {
-    case SDL_QUIT:
-        {
-            printf("SDL_QUIT\n");
-            running = false;
-        }
-        break;
-    case SDL_KEYDOWN:
-    case SDL_KEYUP:
-        {
-            SDL_Keycode keycode = event->key.keysym.sym;
-            bool32 is_down = false;
-            bool32 was_down = false;
-            if (event->key.state == SDL_RELEASED)
-            {
-                was_down = true;
-            }
-            else if (event->key.repeat != 0)
-            {
-                is_down = true;
-                was_down = true;
-            }
-            bool32 alt_down = (event->key.keysym.mod & KMOD_ALT);
-            switch (keycode)
-            {
-            case SDLK_w:
-                {
-                    printf("W\n");
-                }
-                break;
-            case SDLK_a:
-                {
-                    printf("A\n");
-                }
-                break;
-            case SDLK_s:
-                {
-                    printf("S\n");
-                }
-                break;
-            case SDLK_d:
-                {
-                    printf("D\n");
-                }
-                break;
-            case SDLK_UP:
-                {
-                    printf("UP\n");
-                }
-                break;
-            case SDLK_DOWN:
-                {
-                    printf("DOWN\n");
-                }
-                break;
-            case SDLK_LEFT:
-                {
-                    printf("LEFT\n");
-                }
-                break;
-            case SDLK_RIGHT:
-                {
-                    printf("RIGHT\n");
-                }
-                break;
-            }
-        }
-        break;
-    case SDL_WINDOWEVENT:
-        {
-            switch (event->window.event)
-            {
-            case SDL_WINDOWEVENT_RESIZED:
-                {
-                    printf("SDL_WINDOWEVENT_RESIZED (%d, %d)\n",
-                           event->window.data1, event->window.data2);
-                }
-                break;
-                // TODO: just for now
-            case SDL_WINDOWEVENT_EXPOSED:
-                {
-                    auto *window = SDL_GetWindowFromID(event->window.windowID);
-                    auto *renderer = SDL_GetRenderer(window);
-                    local_persist bool32 is_white = true;
-                    is_white = !is_white;
-                    if (is_white)
-                    {
-                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                    }
-                    else
-                    {
-                        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-                    }
-                }
-                break;
-            }
-        }
-        break;
-    }
-    return running;
 }
 
 internal bool32 sdl_resize_backbuffer(sdl_offscreen_buffer *buffer,
@@ -718,6 +628,147 @@ internal void sdl_process_controller_digital_button(
             old_state->num_half_transition + transition_amount;
 }
 
+internal void sdl_process_kbd_msg(game_button_state *new_state, bool32 is_down)
+{
+    new_state->ended_down = is_down;
+    ++new_state->num_half_transition;
+}
+
+internal void sdl_process_event(game_controller_input *kbd_controller)
+{
+    SDL_Event event;
+    while (SDL_PollEvent(&event))
+    {
+        switch (event.type)
+        {
+        case SDL_QUIT:
+            {
+                printf("SDL_QUIT\n");
+                g_running = false;
+            }
+            break;
+        case SDL_KEYDOWN:
+        case SDL_KEYUP:
+            {
+                SDL_Keycode keycode = event.key.keysym.sym;
+                bool32 is_down = false;
+                bool32 was_down = false;
+                if (event.key.state == SDL_RELEASED)
+                {
+                    was_down = true;
+                }
+                else
+                {
+                    is_down = true;
+                     if (event.key.repeat != 0)
+                     {
+                         was_down = true;
+                     }
+                }
+                bool32 alt_down = (event.key.keysym.mod & KMOD_ALT) ? true : false;
+                if (is_down != was_down)
+                {
+                    switch (keycode)
+                    {
+                    case SDLK_w:
+                        {
+                            printf("W\n");
+                        }
+                        break;
+                    case SDLK_a:
+                        {
+                            printf("A\n");
+                        }
+                        break;
+                    case SDLK_s:
+                        {
+                            printf("S\n");
+                        }
+                        break;
+                    case SDLK_d:
+                        {
+                            printf("D\n");
+                        }
+                        break;
+                    case SDLK_UP:
+                        {
+                            sdl_process_kbd_msg(&kbd_controller->y,
+                                                  is_down);
+                        }
+                        break;
+                    case SDLK_DOWN:
+                        {
+                            printf("SDLK_DOWN: isdown=%d, wasdown=%d\n",
+                                   is_down, was_down);
+                            sdl_process_kbd_msg(&kbd_controller->a,
+                                                  is_down);
+                        }
+                        break;
+                    case SDLK_LEFT:
+                        {
+                            sdl_process_kbd_msg(&kbd_controller->x,
+                                                  is_down);
+                        }
+                        break;
+                    case SDLK_RIGHT:
+                        {
+                            sdl_process_kbd_msg(&kbd_controller->b,
+                                                  is_down);
+                        }
+                        break;
+                    case SDLK_ESCAPE:
+                        {
+                            g_running = false;
+                        }
+                        break;
+                    case SDLK_SPACE:
+                        {
+                            printf("SPACE\n");
+                        }
+                        break;
+                    case SDLK_RETURN:
+                        {
+                            printf("ENTER\n");
+                        }
+                        break;
+                    }
+                }
+            }
+            break;
+            // case SDL_WINDOWEVENT:
+            //     {
+            //         switch (event.window.event)
+            //         {
+            //         case SDL_WINDOWEVENT_RESIZED:
+            //             {
+            //                 printf("SDL_WINDOWEVENT_RESIZED (%d, %d)\n",
+            //                        event.window.data1, event.window.data2);
+            //             }
+            //             break;
+            //             // TODO: just for now
+            //         case SDL_WINDOWEVENT_EXPOSED:
+            //             {
+            //                 auto *window = SDL_GetWindowFromID(event.window.windowID);
+            //                 auto *renderer = SDL_GetRenderer(window);
+            //                 local_persist bool32 is_white = true;
+            //                 is_white = !is_white;
+            //                 if (is_white)
+            //                 {
+            //                     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            //                 }
+            //                 else
+            //                 {
+            //                     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            //                 }
+            //             }
+            //             break;
+            //         }
+            //     }
+            //     break;
+        }
+    }
+}
+
 // int if_rdtscp() {
 //     unsigned int edx = 0;
 
@@ -856,16 +907,17 @@ int main(int, char **)
     
         while (g_running)
         {
-            SDL_Event event;
-            while (SDL_PollEvent(&event))
-            {
-                if (!sdl_handle_event(&event))
-                {
-                    g_running = false;
-                    break;
-                }
-            }
+            // We don't really need old input for keyboard as all keyboard
+            // events are processed by wm msgs. So, just copy the old state.
+            game_controller_input *kbd_controller = &new_input->kbd_controller;
+            *kbd_controller = old_input->kbd_controller;
+            
+            sdl_process_event(kbd_controller);
 
+            if (!g_running)
+            {
+                break;
+            }
             // game frame
 
             // poll game controller input
@@ -989,8 +1041,8 @@ int main(int, char **)
                 // avoid play cursor to change during this
                 SDL_LockAudioDevice(audio_dev_id);
                 size_t target_to_cursor = (sound_output.ring_buffer.play_cursor +
-                                              sound_output.latency_sample_count *
-                                              sound_output.bytes_per_sample) %
+                                           sound_output.latency_sample_count *
+                                           sound_output.bytes_per_sample) %
                         sound_output.ring_buffer.size;
                 if (byte_to_lock > target_to_cursor)
                 {
@@ -1002,7 +1054,7 @@ int main(int, char **)
                     bytes_to_write = target_to_cursor - byte_to_lock;
                 }
                 SDL_UnlockAudioDevice(audio_dev_id);
-                printf("bytes_to_write=%" PRIu64"\n", bytes_to_write);
+                printf("bytes_to_write=%" PRIuS "\n", bytes_to_write);
                 if (!sound_playing)
                 {
                     // start playing audio
@@ -1033,7 +1085,7 @@ int main(int, char **)
             {
                 sdl_fill_sound_buffer(&sound_output, &game_sound_buffer,
                                       byte_to_lock, bytes_to_write);
-                printf("bytes written=%" PRIu64"\n", bytes_to_write);
+                printf("bytes written=%" PRIuS "\n", bytes_to_write);
             }
         
             // uint8_t *row = (uint8_t*)g_backbuffer.memory;
@@ -1056,6 +1108,11 @@ int main(int, char **)
                               static_cast<int32_t>(g_backbuffer.pitch));
             SDL_RenderCopy(renderer, g_backbuffer.texture, nullptr, nullptr);
             SDL_RenderPresent(renderer);
+
+            // swap game input
+            game_input *tmp_input = new_input;
+            new_input = old_input;
+            old_input = tmp_input;
 
             // profiling
             uint64_t end_cycle_count = __rdtsc();
