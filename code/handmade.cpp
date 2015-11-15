@@ -87,6 +87,7 @@ internal void game_update_and_render(game_memory *memory,
     }
     
     const game_controller_input *controller0 = &input->controllers[0];
+    const game_controller_input *kbd_controller = &input->kbd_controller;
     if (controller0->is_analog)
     {
         state->tone_hz = 256.0f + 128.0f * controller0->right_stick.end_y;
@@ -98,7 +99,7 @@ internal void game_update_and_render(game_memory *memory,
     {
     }
 
-    if (controller0->a.ended_down)
+    if (controller0->a.ended_down || kbd_controller->a.ended_down)
     {
         state->green_offset += 1;
     }

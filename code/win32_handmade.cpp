@@ -691,6 +691,133 @@ internal void win32_process_kbd_msg(game_button_state *new_state, bool32 is_down
     ++new_state->num_half_transition;
 }
 
+internal void win32_process_wm_msg_synchonously(
+    game_controller_input *kbd_controller)
+{
+    MSG msg;
+    // BOOL msgResult = GetMessageW(&msg, nullptr, 0, 0);
+    while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
+        // if (msgResult > 0)
+    {
+        switch (msg.message)
+        {
+        case WM_QUIT:
+            {
+                g_running = false;
+            }
+            break;
+                    
+        case WM_SYSKEYDOWN:
+        case WM_SYSKEYUP:
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+            {
+                WPARAM vk_code = msg.wParam;
+                bool32 was_down = (msg.lParam & (1 << 30)) ? true : false;
+                bool32 is_down = !(msg.lParam & (1 << 31));
+                if (is_down != was_down)
+                {
+                    switch (vk_code)
+                    {
+                    case 'W':
+                        {
+                            OutputDebugStringA("W\n");
+                        }
+                        break;
+                    case 'A':
+                        {
+                            OutputDebugStringA("A\n");
+                        }
+                        break;
+                    case 'S':
+                        {
+                            OutputDebugStringA("S\n");
+                        }
+                        break;
+                    case 'D':
+                        {
+                            OutputDebugStringA("D\n");
+                        }
+                        break;
+                    case 'Q':
+                        {
+                            win32_process_kbd_msg(
+                                &kbd_controller->left_shoulder, is_down);
+                        }
+                        break;
+                    case 'E':
+                        {
+                            win32_process_kbd_msg(
+                                &kbd_controller->right_shoulder, is_down);
+                        }
+                        break;
+                    case VK_UP:
+                        {
+                            win32_process_kbd_msg(&kbd_controller->y,
+                                                  is_down);
+                        }
+                        break;
+                    case VK_DOWN:
+                        {
+                            char buf[256];
+                            sprintf(buf, "VK_DOWN: isdown=%d, wasdown=%d\n",
+                                    is_down, was_down);
+                            OutputDebugStringA(buf);
+                            win32_process_kbd_msg(&kbd_controller->a,
+                                                  is_down);
+
+                        }
+                        break;
+                    case VK_LEFT:
+                        {
+                            win32_process_kbd_msg(&kbd_controller->x,
+                                                  is_down);
+                        }
+                        break;
+                    case VK_RIGHT:
+                        {
+                            win32_process_kbd_msg(&kbd_controller->b,
+                                                  is_down);
+                        }
+                        break;
+                    case VK_ESCAPE:
+                        {
+                            g_running = false;
+                        }
+                        break;
+                    case VK_SPACE:
+                        {
+                            OutputDebugStringA("SPACE\n");
+                        }
+                        break;
+                    case VK_RETURN:
+                        {
+                            OutputDebugStringA("ENTER\n");
+                        }
+                        break;
+                    case VK_F4:
+                        {
+                            bool32 alt_down = (msg.lParam & (1 << 29));
+                            if (alt_down)
+                            {
+                                g_running = false;
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+            break;
+        default:
+            {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+            break;
+        }
+    }
+}
+
 
 #if HANDMADE_DIAGNOSTIC
 
@@ -809,137 +936,17 @@ int32_t CALLBACK wWinMain(
     
         while (g_running)
         {
-            MSG msg;
-            // TODO: FixThis!!! If only new is set to not down but old is down,
-            // it will continue to scroll each other frame forever.
-            game_controller_input *kbd_controller = &new_input->controllers[0];
- 
-            // BOOL msgResult = GetMessageW(&msg, nullptr, 0, 0);
-            while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
-                // if (msgResult > 0)
-            {
-                if (msg.message == WM_QUIT)
-                {
-                    g_running = false;
-                    break;
-                }
-                switch (msg.message)
-                {
-                case WM_SYSKEYDOWN:
-                case WM_SYSKEYUP:
-                case WM_KEYDOWN:
-                case WM_KEYUP:
-                    {
-                        WPARAM vk_code = msg.wParam;
-                        bool32 was_down = (msg.lParam & (1 << 30)) ? true : false;
-                        bool32 is_down = !(msg.lParam & (1 << 31));
-                        if (is_down != was_down)
-                        {
-                            switch (vk_code)
-                            {
-                            case 'W':
-                                {
-                                    OutputDebugStringA("W\n");
-                                }
-                                break;
-                            case 'A':
-                                {
-                                    OutputDebugStringA("A\n");
-                                }
-                                break;
-                            case 'S':
-                                {
-                                    OutputDebugStringA("S\n");
-                                }
-                                break;
-                            case 'D':
-                                {
-                                    OutputDebugStringA("D\n");
-                                }
-                                break;
-                            case 'Q':
-                                {
-                                    win32_process_kbd_msg(
-                                        &kbd_controller->left_shoulder, is_down);
-                                }
-                                break;
-                            case 'E':
-                                {
-                                    win32_process_kbd_msg(
-                                        &kbd_controller->right_shoulder, is_down);
-                                }
-                                break;
-                            case VK_UP:
-                                {
-                                    win32_process_kbd_msg(&kbd_controller->y,
-                                                          is_down);
-                                 }
-                                break;
-                            case VK_DOWN:
-                                {
-                                    char buf[256];
-                                    sprintf(buf, "VK_DOWN: isdown=%d, wasdown=%d\n", is_down, was_down);
-                                    OutputDebugStringA(buf);
-                                    win32_process_kbd_msg(&kbd_controller->a,
-                                                          is_down);
+            // We don't really need old input for keyboard as all keyboard
+            // events are processed by wm msgs. So, just copy the old state.
+            game_controller_input *kbd_controller = &new_input->kbd_controller;
+            *kbd_controller = old_input->kbd_controller;
 
-                                }
-                                break;
-                            case VK_LEFT:
-                                {
-                                    win32_process_kbd_msg(&kbd_controller->x,
-                                                          is_down);
-                                }
-                                break;
-                            case VK_RIGHT:
-                                {
-                                    win32_process_kbd_msg(&kbd_controller->b,
-                                                          is_down);
-                                }
-                                break;
-                            case VK_ESCAPE:
-                                {
-                                    g_running = false;
-                                }
-                                break;
-                            case VK_SPACE:
-                                {
-                                    OutputDebugStringA("SPACE\n");
-                                }
-                                break;
-                            case VK_RETURN:
-                                {
-                                    OutputDebugStringA("ENTER\n");
-                                }
-                                break;
-                            case VK_F4:
-                                {
-                                    bool32 alt_down = (msg.lParam & (1 << 29));
-                                    if (alt_down)
-                                    {
-                                        g_running = false;
-                                    }
-                                }
-                                break;
-                            }
-                        }
-                    }
-                    break;
-                default:
-                    {
-                        TranslateMessage(&msg);
-                        DispatchMessageW(&msg);
-                    }
-                    break;
-                }
-            }
+            win32_process_wm_msg_synchonously(kbd_controller);
 
             if (!g_running)
             {
                 break;
             }
-
-        
 
             constexpr uint32_t max_controller_count = std::min(
                 XUSER_MAX_COUNT, game_input::max_controller_count);

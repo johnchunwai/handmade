@@ -185,6 +185,7 @@ struct game_input
 {
     class_scope constexpr int32_t max_controller_count = 4;
     game_controller_input controllers[max_controller_count];
+    game_controller_input kbd_controller;
 };
 
 struct game_memory
