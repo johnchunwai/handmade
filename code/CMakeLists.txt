@@ -9,7 +9,8 @@ if(use_sdl)
   message("SDL2_LIBRARY: " ${SDL2_LIBRARY})
 
 
-  include_directories(${SDL2_INCLUDE_DIR}
+  # SYSTEM treats lib headers as system headers with no warnings generated
+  include_directories(SYSTEM ${SDL2_INCLUDE_DIR}
     # ${SDL2_IMAGE_INCLUDE_DIR}
     # ${SDL2_TTF_INCLUDE_DIR}
     )

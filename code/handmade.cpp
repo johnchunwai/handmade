@@ -52,7 +52,7 @@ internal void render_weird_gradient(game_offscreen_buffer *buffer,
             uint8_t green = static_cast<uint8_t>(y + green_offset);
             uint8_t blue = static_cast<uint8_t>(x + blue_offset);
             // little endian - least sig val on smallest addr
-            *pixel++ = (red << 16) | (green << 8) | blue;
+            *pixel++ = ((uint32_t)red << 16) | ((uint32_t)green << 8) | blue;
         }
         row += buffer->pitch;
     }

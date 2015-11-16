@@ -10,6 +10,27 @@
 //   1 - build for public release
 //
 
+#include <cstddef>
+#include <cstdint>
+#include <cinttypes>
+#include <cmath>
+
+#include <utility>
+#include <algorithm>
+//#include <sstream>
+
+#define local_persist static
+#define global_variable static
+#define internal static
+#define class_scope static
+
+typedef int32_t bool32;
+typedef float real32;
+typedef double real64;
+
+// constants
+constexpr real32 kPiReal32 = 3.14159265359f;
+constexpr real32 kEpsilonReal32 = 0.00001f;
 
 //
 // Utilities
@@ -21,12 +42,6 @@
 // May be better just use:
 // https://github.com/gpakosz/Assert
 //
-int assert_handler(const char *expr, const char *file, int line)
-{
-    fprintf(stderr, "Assertion (%s) failed in %s (%d)\n", expr, file, line);
-    return 1;
-}
-
 #if defined(WIN32)
 #  include <intrin.h>
 #  define HANDMADE_DEBUG_BREAK() __debugbreak()
@@ -46,9 +61,19 @@ int assert_handler(const char *expr, const char *file, int line)
 #  endif
 #endif
 
-#define HANDMADE_ASSERT(x) ((void)(!(x) && \
-                                   assert_handler(#x, __FILE__, __LINE__) && \
-                                   (HANDMADE_DEBUG_BREAK(), 1)))
+int assert_handler(const char *expr, const char *file, int line);
+
+int assert_handler(const char *expr, const char *file, int line)
+{
+    fprintf(stderr, "Assertion (%s) failed in %s (%d)\n", expr, file, line);
+    return 1;
+}
+
+#define HANDMADE_ASSERT(x) (                    \
+    (void)(!(x) && \
+           assert_handler(#x, __FILE__, __LINE__) && \
+           (HANDMADE_DEBUG_BREAK(), 1)))
+
 #else  // HANDMADE_DIAGNOSTIC
 
 #define HANDMADE_ASSERT(x) (void)(true ? (void)0 : ((void)(x)))
@@ -56,28 +81,37 @@ int assert_handler(const char *expr, const char *file, int line)
 #endif  // HANDMADE_DIAGNOSTIC
 
 template<typename T, size_t size>
-constexpr size_t array_length(T (&arr)[size]) { return size; }
+constexpr size_t array_length(T (&)[size]) { return size; }
 
 constexpr uint64_t kilobyte(uint64_t val) { return val * 1024ULL; }
 constexpr uint64_t megabyte(uint64_t val) { return kilobyte(val) * 1024ULL; }
 constexpr uint64_t gigabyte(uint64_t val) { return megabyte(val) * 1024ULL; }
 constexpr uint64_t terabyte(uint64_t val) { return gigabyte(val) * 1024ULL; }
 
+inline uint32_t safe_truncate_int64_uint32(int64_t val)
+{
+    // Note the sign also changed.
+    HANDMADE_ASSERT(val >= 0 && val <= UINT32_MAX);
+    uint32_t result = static_cast<uint32_t>(val);
+    return result;
+}
+
 inline uint32_t safe_truncate_uint64_uint32(uint64_t val)
 {
+    // Note the sign also changed.
     HANDMADE_ASSERT(val <= UINT32_MAX);
     uint32_t result = static_cast<uint32_t>(val);
     return result;
 }
 
-inline uint16_t safe_truncate_int32_uint16(int32_t val)
+inline uint16_t safe_truncate_uint32_uint16(uint32_t val)
 {
     HANDMADE_ASSERT(val <= UINT16_MAX);
     uint16_t result = static_cast<uint16_t>(val);
     return result;
 }
 
-inline uint8_t safe_truncate_int32_uint8(int32_t val)
+inline uint8_t safe_truncate_uint32_uint8(uint32_t val)
 {
     HANDMADE_ASSERT(val <= UINT8_MAX);
     uint8_t result = static_cast<uint8_t>(val);

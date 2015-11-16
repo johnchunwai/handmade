@@ -19,23 +19,10 @@
   Just a partial list of stuff!
 */
 
-#include <cstddef>
-#include <cstdint>
-#include <cinttypes>
-#include <cmath>
-#include <cstdio>
-#include <cstring>
 
-#include <utility>
-#include <algorithm>
-//#include <sstream>
-#include <chrono>
-// #include <iostream>
-
-#define local_persist static
-#define global_variable static
-#define internal static
-#define class_scope static
+//
+// Global stuff that are platform specific but applies to game.
+//
 
 // printf macros that are not yet defined
 #if __SIZEOF_SIZE_T__ == 8
@@ -46,29 +33,28 @@
 #error "Unsupported __SIZEOF_SIZE_T__ " #__SIZEOF_SIZE_T__
 #endif // __SIZEOF_SIZE_T__
 
-#define PRIdS __PRIS_PREFIX "d"
-#define PRIxS __PRIS_PREFIX "x"
+// #define PRIdS __PRIS_PREFIX "d"
+// #define PRIxS __PRIS_PREFIX "x"
 #define PRIuS __PRIS_PREFIX "u"
-#define PRIXS __PRIS_PREFIX "X"
-#define PRIoS __PRIS_PREFIX "o"
+// #define PRIXS __PRIS_PREFIX "X"
+// #define PRIoS __PRIS_PREFIX "o"
 
-typedef int32_t bool32;
-typedef float real32;
-typedef double real64;
-typedef std::chrono::duration<real32, std::ratio<1, 1000>> chrono_duration_ms;
-
-
-// constants
-constexpr real32 kPiReal32 = 3.14159265359f;
-constexpr real32 kEpsilonReal32 = 0.00001f;
 
 #include "handmade.h"
 #include "handmade.cpp"
 
-
 /*
   Platform specific stuff below
 */
+#include <cstdio>
+#include <cstring>
+
+#include <chrono>
+// #include <iostream>
+
+typedef std::chrono::duration<real32, std::ratio<1, 1000> > chrono_duration_ms;
+
+
 #ifdef WIN32
 
 #define WIN32_LEAN_AND_MEAN
@@ -76,6 +62,7 @@ constexpr real32 kEpsilonReal32 = 0.00001f;
 
 #include <windows.h>
 #include <intrin.h>
+
 
 internal void* platform_alloc_zeroed(void *base_addr, size_t length)
 {
@@ -120,7 +107,7 @@ internal void platform_free(void *memory, size_t length)
 }
 
 #if __clang__
-internal __inline__ volatile uint64_t __rdtsc(void)
+internal __inline__ uint64_t __rdtsc(void)
 {
     unsigned hi, lo;
     __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
@@ -143,11 +130,6 @@ internal real32 sdl_get_controller_stick_normalized_deadzone(
     return unnormalized_deadzone / std::sqrt(
         kSdlControllerMaxStickVal * kSdlControllerMaxStickVal * 2.0f);
 }
-// following un-normalized deadzone comes from xinput
-global_variable const real32 kSdlLeftThumbNormalizedDeadzone =
-        sdl_get_controller_stick_normalized_deadzone(7849.0f);
-global_variable const real32 kSdlRightThumbNormalizedDeadzone =
-        sdl_get_controller_stick_normalized_deadzone(8689.0f);
 
 struct sdl_offscreen_buffer
 {
@@ -216,7 +198,7 @@ internal debug_read_file_result debug_platform_read_entire_file(
         int64_t filesize = SDL_RWsize(file);
         if (filesize >= 0)
         {
-            result.size = safe_truncate_uint64_uint32(filesize);
+            result.size = safe_truncate_int64_uint32(filesize);
             result.content = platform_alloc_zeroed(nullptr, result.size);
             if (result.content)
             {
@@ -348,7 +330,7 @@ internal bool32 sdl_resize_backbuffer(sdl_offscreen_buffer *buffer,
     if (buffer->memory)
     {
         int32_t mem_size = buffer->width * buffer->height * bytes_per_pixel;
-        platform_free(buffer->memory, mem_size);
+        platform_free(buffer->memory, static_cast<size_t>(mem_size));
         buffer->memory = nullptr;
     }
 
@@ -368,7 +350,8 @@ internal bool32 sdl_resize_backbuffer(sdl_offscreen_buffer *buffer,
     buffer->pitch = buffer->width * bytes_per_pixel;
 
     int32_t mem_size = buffer->width * buffer->height * bytes_per_pixel;
-    buffer->memory = platform_alloc_zeroed(nullptr, mem_size);
+    buffer->memory = platform_alloc_zeroed(nullptr,
+                                           static_cast<size_t>(mem_size));
 
     return succeeded;
 }
@@ -384,10 +367,10 @@ internal SDL_AudioDeviceID sdl_init_sound(sdl_sound_output *sound_output)
     
     SDL_AudioSpec desired {};
     SDL_AudioSpec obtained {};
-    desired.freq = sound_output->samples_per_sec;
+    desired.freq = static_cast<int>(sound_output->samples_per_sec);
     desired.format = sound_output->sdl_audio_format;
-    desired.channels = safe_truncate_int32_uint8(sound_output->num_sound_ch);
-    desired.samples = safe_truncate_int32_uint16(
+    desired.channels = safe_truncate_uint32_uint8(sound_output->num_sound_ch);
+    desired.samples = safe_truncate_uint32_uint16(
         sound_output->sdl_audio_buffer_size_in_samples);
     desired.callback = sdl_audio_callback;
     desired.userdata = static_cast<void*>(&sound_output->ring_buffer);
@@ -481,11 +464,12 @@ internal void sdl_audio_callback(void *userdata, uint8_t* stream, int32_t len)
     // std::memset(stream, 0, len);
     sdl_sound_ring_buffer *ring_buffer =
             static_cast<sdl_sound_ring_buffer*>(userdata);
+    size_t len_in_size = static_cast<size_t>(len);
 
     // grab data from ring buffer to fill the sdl audio buffer
-    size_t region_1_size = len;
+    size_t region_1_size = len_in_size;
     size_t region_2_size = 0;
-    if (ring_buffer->play_cursor + len > ring_buffer->size)
+    if ((ring_buffer->play_cursor + len_in_size) > ring_buffer->size)
     {
         region_1_size = ring_buffer->size - ring_buffer->play_cursor;
         region_2_size = static_cast<size_t>(len) - region_1_size;
@@ -500,7 +484,7 @@ internal void sdl_audio_callback(void *userdata, uint8_t* stream, int32_t len)
                     ring_buffer->memory,
                     region_2_size);
     }
-    ring_buffer->play_cursor = (ring_buffer->play_cursor + len)
+    ring_buffer->play_cursor = (ring_buffer->play_cursor + len_in_size)
             % ring_buffer->size;
 }
 
@@ -538,7 +522,7 @@ internal std::pair<real32, real32> sdl_thumb_stick_resolve_deadzone_normalize(
     return std::make_pair(x, y);
 }
 
-void sdl_init_controllers(sdl_game_controllers *controllers,
+internal void sdl_init_controllers(sdl_game_controllers *controllers,
                           const char* mapping_file)
 {
     // add mapping first
@@ -593,7 +577,7 @@ void sdl_init_controllers(sdl_game_controllers *controllers,
     {
         SDL_Joystick *joystick = SDL_GameControllerGetJoystick(
             controllers->controllers[controller_index]);
-        HANDMADE_ASSERT(joystick || !"failed to get joystick from controller");
+        HANDMADE_ASSERT(joystick);
         SDL_Haptic *haptic = SDL_HapticOpenFromJoystick(joystick);
         if (haptic)
         {
@@ -786,6 +770,9 @@ internal void sdl_process_event(game_controller_input *kbd_controller)
 
 int main(int, char **)
 {
+    int a[13];
+    int b = array_length(a);
+    printf("b is %d\n", b);
     // if (if_rdtscp())
     // {
     //     printf("rdtscp\n");
@@ -873,6 +860,11 @@ int main(int, char **)
     // init game controller
     sdl_game_controllers sdl_controllers {};
     sdl_init_controllers(&sdl_controllers, kSdlControllerMappingFile);
+    // following un-normalized deadzone comes from xinput
+    const real32 left_thumb_norm_deadzone =
+            sdl_get_controller_stick_normalized_deadzone(7849.0f);
+    const real32 right_thumb_norm_deadzone =
+            sdl_get_controller_stick_normalized_deadzone(8689.0f);
 
     /*
       TODO: may be handle SDL_CONTROLLERDEVICE events for plugged in or out
@@ -986,11 +978,11 @@ int main(int, char **)
                 real32 right_stick_y = static_cast<real32>(SDL_GameControllerGetAxis(
                     sdl_controller, SDL_CONTROLLER_AXIS_RIGHTY));
                 auto left_stick_xy = sdl_thumb_stick_resolve_deadzone_normalize(
-                    left_stick_x, left_stick_y, kSdlLeftThumbNormalizedDeadzone);
+                    left_stick_x, left_stick_y, left_thumb_norm_deadzone);
                 left_stick_x = left_stick_xy.first;
                 left_stick_y = left_stick_xy.second;
                 auto right_stick_xy = sdl_thumb_stick_resolve_deadzone_normalize(
-                    right_stick_x, right_stick_y, kSdlRightThumbNormalizedDeadzone);
+                    right_stick_x, right_stick_y, right_thumb_norm_deadzone);
                 right_stick_x = right_stick_xy.first;
                 right_stick_y = right_stick_xy.second;
                 printf("left: x=%.2f, y=%.2f; right: x=%.2f, y=%.2f\n",
@@ -1119,7 +1111,8 @@ int main(int, char **)
             auto end_time_point = std::chrono::high_resolution_clock::now();
 
             // use signed, as it may go backward
-            int64_t cycles_elapsed = end_cycle_count - last_cycle_count;
+            int64_t cycles_elapsed =
+                    static_cast<int64_t>(end_cycle_count - last_cycle_count);
             real32 mega_cycles_per_frame = static_cast<real32>(cycles_elapsed)
                     / 1000000.0f;
 

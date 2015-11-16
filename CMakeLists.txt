@@ -79,14 +79,22 @@ else()
   #   
   # added myself:
   #   -Werror treat warnings as errors
+  #   -Wno-<warning> disable <warning>
   #   -Wno-error=<err> keep warning for <err> while not treat as error
   #   -Weverything - really enable all warnings
   #   -fno-rtti - disable rtti
   #   -m32 - cross compile 32bit version (apt-get install gcc-multilib
   #     g++-multilib libsdl2<version>:i386)
   #   -v - verbose
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror \
--Wno-error=unused-variable -fno-rtti -v")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -v -fno-rtti -Weverything -Werror \
+-Wno-gnu-anonymous-struct -Wno-nested-anon-types -Wno-c++98-compat \
+-Wno-c++98-compat-pedantic \
+-Wno-error=unused-variable -Wno-error=undef \
+-Wno-error=padded -Wno-error=documentation")
+
+  if(internal_build)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-padded")
+  endif(internal_build)
 endif()
 
 # Subdirectory where CMakeLists.txt exists

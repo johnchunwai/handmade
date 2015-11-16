@@ -19,18 +19,10 @@
   Just a partial list of stuff!
  */
 
-#include <cstdint>
-#include <cinttypes>
-#include <cmath>
 
-#include <utility>
-#include <algorithm>
-//#include <sstream>
-
-#define local_persist static
-#define global_variable static
-#define internal static
-#define class_scope static
+//
+// Global stuff that are platform specific but applies to game.
+//
 
 // printf macros that are not yet defined on MSVC
 #if _WIN64
@@ -46,13 +38,8 @@
 #define PRIoS __PRIS_PREFIX "o"
 
 
-typedef int32_t bool32;
-typedef float real32;
 
-// constants
-constexpr real32 kPiReal32 = 3.14159265359f;
-constexpr real32 kEpsilonReal32 = 0.00001f;
-
+#include "handmade.h"
 #include "handmade.cpp"
 
 
@@ -99,12 +86,6 @@ internal real32 win32_get_xinput_stick_normalized_deadzone(
     return unnormalized_deadzone /
             std::sqrt(kXInputMaxStickVal * kXInputMaxStickVal * 2.0f);
 }
-global_variable const real32 g_xinput_left_thumb_normalized_deadzone =
-        win32_get_xinput_stick_normalized_deadzone(
-            XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-global_variable const real32 g_xinput_right_thumb_normalized_deadzone =
-        win32_get_xinput_stick_normalized_deadzone(
-            XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
 
 // XInputGetState
 #define XINPUT_GET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_STATE*)
@@ -167,7 +148,7 @@ internal debug_read_file_result debug_platform_read_entire_file(
         LARGE_INTEGER file_size {};
         if (GetFileSizeEx(file, &file_size))
         {
-            result.size = safe_truncate_uint64_uint32(file_size.QuadPart);
+            result.size = safe_truncate_int64_uint32(file_size.QuadPart);
             // Guarantee to be allocation granularity (64KB) aligned
             // commited to page boundary (4KB), but the rest are wasted space
             // memory auto clears to 0
@@ -916,6 +897,12 @@ int32_t CALLBACK wWinMain(
     }
 
     // input
+    const real32 left_thumb_norm_deadzone =
+            win32_get_xinput_stick_normalized_deadzone(
+                XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+    const real32 right_thumb_norm_deadzone =
+            win32_get_xinput_stick_normalized_deadzone(
+                XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE);
     game_input input[2] = {};
     game_input *new_input = &input[0];
     game_input *old_input = &input[1];
@@ -1017,13 +1004,13 @@ int32_t CALLBACK wWinMain(
                     auto left_stick_xy =
                             win32_xinput_thumb_resolve_deadzone_normalize(
                                 pad->sThumbLX, pad->sThumbLY,
-                                g_xinput_left_thumb_normalized_deadzone);
+                                left_thumb_norm_deadzone);
                     real32 left_stick_x = left_stick_xy.first;
                     real32 left_stick_y = left_stick_xy.second;
                     auto right_stick_xy =
                             win32_xinput_thumb_resolve_deadzone_normalize(
                                 pad->sThumbRX, pad->sThumbRY,
-                                g_xinput_right_thumb_normalized_deadzone);
+                                right_thumb_norm_deadzone);
                     real32 right_stick_x = right_stick_xy.first;
                     real32 right_stick_y = right_stick_xy.second;
                     // std::stringstream ss;
