@@ -119,7 +119,7 @@ inline uint8_t safe_truncate_uint32_uint8(uint32_t val)
 }
 
 /*
-  TODO: Services that the platform layer provides to the game.
+  Services that the platform layer provides to the game.
 */
 
 #if HANDMADE_INTERNAL_BUILD
@@ -180,21 +180,13 @@ struct game_button_state
 
 struct game_analog_stick_state
 {
-    real32 start_x;
-    real32 start_y;
-
-    real32 min_x;
-    real32 min_y;
-
-    real32 max_x;
-    real32 max_y;
-
-    real32 end_x;
-    real32 end_y;
+    real32 avg_x;
+    real32 avg_y;
 };
 
 struct game_controller_input
 {
+    bool32 is_connected;
     bool32 is_analog;
 
     game_analog_stick_state left_stick;
@@ -202,25 +194,50 @@ struct game_controller_input
     
     union
     {
-        game_button_state buttons[6];
+        game_button_state buttons[12];
         struct
         {
-            game_button_state a;
-            game_button_state b;
-            game_button_state x;
-            game_button_state y;
+            game_button_state move_up;
+            game_button_state move_down;
+            game_button_state move_left;
+            game_button_state move_right;
+
+            game_button_state action_up;
+            game_button_state action_down;
+            game_button_state action_left;
+            game_button_state action_right;
+
             game_button_state left_shoulder;
             game_button_state right_shoulder;
+
+            game_button_state start;
+            game_button_state back;
         };
     };
 };
 
 struct game_input
 {
-    class_scope constexpr int32_t max_controller_count = 4;
+    class_scope constexpr int32_t kbd_controller_index = 0;
+    class_scope constexpr int32_t max_controller_count = 5;
     game_controller_input controllers[max_controller_count];
-    game_controller_input kbd_controller;
 };
+
+inline game_controller_input *get_controller(game_input *input, int index)
+{
+    HANDMADE_ASSERT(index < array_length(input->controllers));
+    game_controller_input *result = &input->controllers[index];
+    return result;
+}
+                   
+inline const game_controller_input *get_controller(const game_input *input,
+                                                   int index)
+{
+    HANDMADE_ASSERT(index < array_length(input->controllers));
+    const game_controller_input *result = &input->controllers[index];
+    return result;
+}
+
 
 struct game_memory
 {

@@ -25,11 +25,11 @@
 //
 
 // printf macros that are not yet defined
-#if __SIZEOF_SIZE_T__ == 8
+#if __SIZEOF_SIZE_T__ == 8 || _WIN64
 #define __PRIS_PREFIX "z"
-#elif __SIZEOF_SIZE_T__ == 4
+#elif __SIZEOF_SIZE_T__ == 4 || _WIN32
 #define __PRIS_PREFIX
-#else
+#else  // __SIZEOF_SIZE_T__
 #error "Unsupported __SIZEOF_SIZE_T__ " #__SIZEOF_SIZE_T__
 #endif // __SIZEOF_SIZE_T__
 
@@ -165,8 +165,8 @@ struct sdl_sound_output
 
 struct sdl_game_controllers
 {
-    SDL_GameController *controllers[game_input::max_controller_count];
-    SDL_Haptic *haptics[game_input::max_controller_count];
+    SDL_GameController *controllers[game_input::max_controller_count - 1];
+    SDL_Haptic *haptics[game_input::max_controller_count - 1];
     int32_t num_controllers_active;
 };
 
@@ -325,7 +325,6 @@ internal bool32 sdl_resize_backbuffer(sdl_offscreen_buffer *buffer,
 {
     bool32 succeeded = true;
     constexpr int32_t bytes_per_pixel = 4;
-    // TODO: bulletproof this.
     // maybe don't free first, free after.
     if (buffer->memory)
     {
@@ -460,7 +459,7 @@ internal void sdl_fill_sound_buffer(sdl_sound_output *sound_output,
 
 internal void sdl_audio_callback(void *userdata, uint8_t* stream, int32_t len)
 {
-    printf("sdl_audio_callback: len=%d, ring_buffer=%p\n", len, userdata);
+    // printf("sdl_audio_callback: len=%d, ring_buffer=%p\n", len, userdata);
     // std::memset(stream, 0, len);
     sdl_sound_ring_buffer *ring_buffer =
             static_cast<sdl_sound_ring_buffer*>(userdata);
@@ -488,38 +487,28 @@ internal void sdl_audio_callback(void *userdata, uint8_t* stream, int32_t len)
             % ring_buffer->size;
 }
 
-internal std::pair<real32, real32> sdl_thumb_stick_resolve_deadzone_normalize(
-    real32 x, real32 y, real32 deadzone)
+internal real32 sdl_thumb_stick_resolve_deadzone_normalize(
+    real32 val, real32 deadzone)
 {
     // normalize the input first (-1.0f to 1.0f)
     // max with -1 because abs(min val) is 1 great then max val
-    x = std::max(-1.0f, x / kSdlControllerMaxStickVal);
-    y = std::max(-1.0f, y / kSdlControllerMaxStickVal);
+    val = std::max(-1.0f, val / kSdlControllerMaxStickVal);
 
     // adjust for deadzone
-    if (x >= 0.0f)
+    if (val >= 0.0f)
     {
-        x = x < deadzone ? 0 : x - deadzone;
+        val = val < deadzone ? 0 : val - deadzone;
     }
     else
     {
-        x = x > -deadzone ? 0 : x + deadzone;
-    }
-    if (y >= 0.0f)
-    {
-        y = y < deadzone ? 0 : y - deadzone;
-    }
-    else
-    {
-        y = y > -deadzone ? 0 : y + deadzone;
+        val = val > -deadzone ? 0 : val + deadzone;
     }
 
     // scale the val for smooth transition outside deadzone
     // sdl flips y-axis compared to xinput
-    x *= (1.0f / (1.0f - deadzone));
-    y *= (-1.0f / (1.0f - deadzone));
+    val *= (1.0f / (1.0f - deadzone));
 
-    return std::make_pair(x, y);
+    return val;
 }
 
 internal void sdl_init_controllers(sdl_game_controllers *controllers,
@@ -556,7 +545,7 @@ internal void sdl_init_controllers(sdl_game_controllers *controllers,
                        joystick_index, controller_index);
                 controllers->controllers[controller_index++] =
                         SDL_GameControllerOpen(joystick_index);
-                if (controller_index == game_input::max_controller_count)
+                if (controller_index == game_input::max_controller_count - 1)
                 {
                     break;
                 }
@@ -614,6 +603,7 @@ internal void sdl_process_controller_digital_button(
 
 internal void sdl_process_kbd_msg(game_button_state *new_state, bool32 is_down)
 {
+    HANDMADE_ASSERT(is_down != new_state->ended_down);
     new_state->ended_down = is_down;
     ++new_state->num_half_transition;
 }
@@ -649,34 +639,50 @@ internal void sdl_process_event(game_controller_input *kbd_controller)
                          was_down = true;
                      }
                 }
-                bool32 alt_down = (event.key.keysym.mod & KMOD_ALT) ? true : false;
+                // bool32 alt_down = (event.key.keysym.mod & KMOD_ALT) ? true : false;
                 if (is_down != was_down)
                 {
                     switch (keycode)
                     {
                     case SDLK_w:
                         {
-                            printf("W\n");
-                        }
-                        break;
-                    case SDLK_a:
-                        {
-                            printf("A\n");
+                            sdl_process_kbd_msg(&kbd_controller->move_up,
+                                                  is_down);
                         }
                         break;
                     case SDLK_s:
                         {
-                            printf("S\n");
+                            sdl_process_kbd_msg(&kbd_controller->move_down,
+                                                  is_down);
+                        }
+                        break;
+                    case SDLK_a:
+                        {
+                            sdl_process_kbd_msg(&kbd_controller->move_left,
+                                                  is_down);
                         }
                         break;
                     case SDLK_d:
                         {
-                            printf("D\n");
+                            sdl_process_kbd_msg(&kbd_controller->move_right,
+                                                  is_down);
+                        }
+                        break;
+                    case SDLK_q:
+                        {
+                            sdl_process_kbd_msg(
+                                &kbd_controller->left_shoulder, is_down);
+                        }
+                        break;
+                    case SDLK_e:
+                        {
+                            sdl_process_kbd_msg(
+                                &kbd_controller->right_shoulder, is_down);
                         }
                         break;
                     case SDLK_UP:
                         {
-                            sdl_process_kbd_msg(&kbd_controller->y,
+                            sdl_process_kbd_msg(&kbd_controller->action_up,
                                                   is_down);
                         }
                         break;
@@ -684,19 +690,19 @@ internal void sdl_process_event(game_controller_input *kbd_controller)
                         {
                             printf("SDLK_DOWN: isdown=%d, wasdown=%d\n",
                                    is_down, was_down);
-                            sdl_process_kbd_msg(&kbd_controller->a,
+                            sdl_process_kbd_msg(&kbd_controller->action_down,
                                                   is_down);
                         }
                         break;
                     case SDLK_LEFT:
                         {
-                            sdl_process_kbd_msg(&kbd_controller->x,
+                            sdl_process_kbd_msg(&kbd_controller->action_left,
                                                   is_down);
                         }
                         break;
                     case SDLK_RIGHT:
                         {
-                            sdl_process_kbd_msg(&kbd_controller->b,
+                            sdl_process_kbd_msg(&kbd_controller->action_right,
                                                   is_down);
                         }
                         break;
@@ -729,7 +735,6 @@ internal void sdl_process_event(game_controller_input *kbd_controller)
             //                        event.window.data1, event.window.data2);
             //             }
             //             break;
-            //             // TODO: just for now
             //         case SDL_WINDOWEVENT_EXPOSED:
             //             {
             //                 auto *window = SDL_GetWindowFromID(event.window.windowID);
@@ -770,9 +775,6 @@ internal void sdl_process_event(game_controller_input *kbd_controller)
 
 int main(int, char **)
 {
-    int a[13];
-    int b = array_length(a);
-    printf("b is %d\n", b);
     // if (if_rdtscp())
     // {
     //     printf("rdtscp\n");
@@ -901,8 +903,10 @@ int main(int, char **)
         {
             // We don't really need old input for keyboard as all keyboard
             // events are processed by wm msgs. So, just copy the old state.
-            game_controller_input *kbd_controller = &new_input->kbd_controller;
-            *kbd_controller = old_input->kbd_controller;
+            game_controller_input *kbd_controller =
+                    get_controller(new_input, game_input::kbd_controller_index);
+            *kbd_controller =
+                    *get_controller(old_input, game_input::kbd_controller_index);
             
             sdl_process_event(kbd_controller);
 
@@ -914,101 +918,122 @@ int main(int, char **)
 
             // poll game controller input
             for (int32_t controller_index = 0;
-                 controller_index < sdl_controllers.num_controllers_active;
+                 controller_index < game_input::max_controller_count - 1;
                  ++controller_index)
             {
-                // Controller is connected
-                game_controller_input *new_controller
-                        = &new_input->controllers[controller_index];
-                const game_controller_input *old_controller
-                        = &old_input->controllers[controller_index];
-                SDL_GameController *sdl_controller =
-                        sdl_controllers.controllers[controller_index];
-                // these are what we care about
-                bool32 up = SDL_GameControllerGetButton(
-                    sdl_controller, SDL_CONTROLLER_BUTTON_DPAD_UP);
-                bool32 down = SDL_GameControllerGetButton(
-                    sdl_controller, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
-                bool32 left = SDL_GameControllerGetButton(
-                    sdl_controller, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
-                bool32 right = SDL_GameControllerGetButton(
-                    sdl_controller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
-                // bool32 start = SDL_GameControllerGetButton(
-                // sdl_controller, SDL_CONTROLLER_BUTTON_START);
-                // bool32 back = SDL_GameControllerGetButton(
-                // sdl_controller, SDL_CONTROLLER_BUTTON_BACK);
+                // controller 0 is reserved for keyboard
+                int32_t true_controller_index = controller_index + 1;
+                game_controller_input *new_controller =
+                        get_controller(new_input, true_controller_index);
+                if (controller_index < sdl_controllers.num_controllers_active)
+                {
+                    // Controller is connected
+                    new_controller->is_connected = true;
+                    const game_controller_input *old_controller =
+                            get_controller(old_input, true_controller_index);
+                    SDL_GameController *sdl_controller =
+                            sdl_controllers.controllers[controller_index];
+
+                    // these are what we care about
+                    sdl_process_controller_digital_button(
+                        &new_controller->move_up,
+                        &old_controller->move_up,
+                        sdl_controller,
+                        SDL_CONTROLLER_BUTTON_DPAD_UP);
+                    sdl_process_controller_digital_button(
+                        &new_controller->move_down,
+                        &old_controller->move_down,
+                        sdl_controller,
+                        SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+                    sdl_process_controller_digital_button(
+                        &new_controller->move_left,
+                        &old_controller->move_left,
+                        sdl_controller,
+                        SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+                    sdl_process_controller_digital_button(
+                        &new_controller->move_right,
+                        &old_controller->move_right,
+                        sdl_controller,
+                        SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+
+                    sdl_process_controller_digital_button(
+                        &new_controller->action_up,
+                        &old_controller->action_up,
+                        sdl_controller,
+                        SDL_CONTROLLER_BUTTON_Y);
+                    sdl_process_controller_digital_button(
+                        &new_controller->action_down,
+                        &old_controller->action_down,
+                        sdl_controller,
+                        SDL_CONTROLLER_BUTTON_A);
+                    sdl_process_controller_digital_button(
+                        &new_controller->action_left,
+                        &old_controller->action_left,
+                        sdl_controller,
+                        SDL_CONTROLLER_BUTTON_X);
+                    sdl_process_controller_digital_button(
+                        &new_controller->action_right,
+                        &old_controller->action_right,
+                        sdl_controller,
+                        SDL_CONTROLLER_BUTTON_B);
+
+                    sdl_process_controller_digital_button(
+                        &new_controller->left_shoulder,
+                        &old_controller->left_shoulder,
+                        sdl_controller,
+                        SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+                    sdl_process_controller_digital_button(
+                        &new_controller->right_shoulder,
+                        &old_controller->right_shoulder,
+                        sdl_controller,
+                        SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+
+                    sdl_process_controller_digital_button(
+                        &new_controller->start,
+                        &old_controller->start,
+                        sdl_controller,
+                        SDL_CONTROLLER_BUTTON_START);
+                    sdl_process_controller_digital_button(
+                        &new_controller->back,
+                        &old_controller->back,
+                        sdl_controller,
+                        SDL_CONTROLLER_BUTTON_BACK);
                 
-                sdl_process_controller_digital_button(
-                    &new_controller->a,
-                    &old_controller->a,
-                    sdl_controller,
-                    SDL_CONTROLLER_BUTTON_A);
-                sdl_process_controller_digital_button(
-                    &new_controller->b,
-                    &old_controller->b,
-                    sdl_controller,
-                    SDL_CONTROLLER_BUTTON_B);
-                sdl_process_controller_digital_button(
-                    &new_controller->x,
-                    &old_controller->x,
-                    sdl_controller,
-                    SDL_CONTROLLER_BUTTON_X);
-                sdl_process_controller_digital_button(
-                    &new_controller->y,
-                    &old_controller->a,
-                    sdl_controller,
-                    SDL_CONTROLLER_BUTTON_Y);
-                sdl_process_controller_digital_button(
-                    &new_controller->left_shoulder,
-                    &old_controller->left_shoulder,
-                    sdl_controller,
-                    SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
-                sdl_process_controller_digital_button(
-                    &new_controller->right_shoulder,
-                    &old_controller->right_shoulder,
-                    sdl_controller,
-                    SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+                    // process analog
+                    new_controller->is_analog = true;
 
-                real32 left_stick_x = static_cast<real32>(SDL_GameControllerGetAxis(
-                    sdl_controller, SDL_CONTROLLER_AXIS_LEFTX));
-                real32 left_stick_y = static_cast<real32>(SDL_GameControllerGetAxis(
-                    sdl_controller, SDL_CONTROLLER_AXIS_LEFTY));
-                real32 right_stick_x = static_cast<real32>(SDL_GameControllerGetAxis(
-                    sdl_controller, SDL_CONTROLLER_AXIS_RIGHTX));
-                real32 right_stick_y = static_cast<real32>(SDL_GameControllerGetAxis(
-                    sdl_controller, SDL_CONTROLLER_AXIS_RIGHTY));
-                auto left_stick_xy = sdl_thumb_stick_resolve_deadzone_normalize(
-                    left_stick_x, left_stick_y, left_thumb_norm_deadzone);
-                left_stick_x = left_stick_xy.first;
-                left_stick_y = left_stick_xy.second;
-                auto right_stick_xy = sdl_thumb_stick_resolve_deadzone_normalize(
-                    right_stick_x, right_stick_y, right_thumb_norm_deadzone);
-                right_stick_x = right_stick_xy.first;
-                right_stick_y = right_stick_xy.second;
-                printf("left: x=%.2f, y=%.2f; right: x=%.2f, y=%.2f\n",
-                       left_stick_x, left_stick_y, right_stick_x, right_stick_y);
-                // std::stringstream ss;
-                // ss << "stickx = " << left_stick_x << " sticky=" << left_stick_y << std::endl;
-                // OutputDebugStringA(ss.str().c_str());
-                new_controller->is_analog = true;
+                    // SDL stick's Y has opposite sign than XInput
+                    real32 left_stick_x = static_cast<real32>(
+                        SDL_GameControllerGetAxis(sdl_controller,
+                                                  SDL_CONTROLLER_AXIS_LEFTX));
+                    real32 left_stick_y = static_cast<real32>(
+                        SDL_GameControllerGetAxis(sdl_controller,
+                                                  SDL_CONTROLLER_AXIS_LEFTY));
+                    real32 right_stick_x = static_cast<real32>(
+                        SDL_GameControllerGetAxis(sdl_controller,
+                                                  SDL_CONTROLLER_AXIS_RIGHTX));
+                    real32 right_stick_y = static_cast<real32>(
+                        SDL_GameControllerGetAxis(sdl_controller,
+                                                  SDL_CONTROLLER_AXIS_RIGHTY));
 
-                new_controller->left_stick.start_x = old_controller->left_stick.end_x;
-                new_controller->left_stick.end_x = left_stick_x;
-                new_controller->left_stick.min_x = new_controller->left_stick.max_x
-                        = new_controller->left_stick.end_x;
-                new_controller->left_stick.start_y = old_controller->left_stick.end_y;
-                new_controller->left_stick.end_y = left_stick_y;
-                new_controller->left_stick.min_y = new_controller->left_stick.max_y
-                        = new_controller->left_stick.end_y;
-
-                new_controller->right_stick.start_x = old_controller->right_stick.end_x;
-                new_controller->right_stick.end_x = right_stick_x;
-                new_controller->right_stick.min_x = new_controller->right_stick.max_x
-                        = new_controller->right_stick.end_x;
-                new_controller->right_stick.start_y = old_controller->right_stick.end_y;
-                new_controller->right_stick.end_y = right_stick_y;
-                new_controller->right_stick.min_y = new_controller->right_stick.max_y
-                        = new_controller->right_stick.end_y;
+                    new_controller->left_stick.avg_x =
+                            sdl_thumb_stick_resolve_deadzone_normalize(
+                                left_stick_x, left_thumb_norm_deadzone);
+                    new_controller->left_stick.avg_y =
+                            -sdl_thumb_stick_resolve_deadzone_normalize(
+                                left_stick_y, left_thumb_norm_deadzone);
+                    new_controller->right_stick.avg_x =
+                            sdl_thumb_stick_resolve_deadzone_normalize(
+                                right_stick_x, right_thumb_norm_deadzone);
+                    new_controller->right_stick.avg_y =
+                            -sdl_thumb_stick_resolve_deadzone_normalize(
+                                right_stick_y, right_thumb_norm_deadzone);
+                }
+                else
+                {
+                    // Controller is not connected
+                    new_controller->is_connected = false;
+                }
             }
 
             // const game_controller_input *controller0 = &new_input->controllers[0];
@@ -1046,7 +1071,7 @@ int main(int, char **)
                     bytes_to_write = target_to_cursor - byte_to_lock;
                 }
                 SDL_UnlockAudioDevice(audio_dev_id);
-                printf("bytes_to_write=%" PRIuS "\n", bytes_to_write);
+                // printf("bytes_to_write=%" PRIuS "\n", bytes_to_write);
                 if (!sound_playing)
                 {
                     // start playing audio
@@ -1077,7 +1102,7 @@ int main(int, char **)
             {
                 sdl_fill_sound_buffer(&sound_output, &game_sound_buffer,
                                       byte_to_lock, bytes_to_write);
-                printf("bytes written=%" PRIuS "\n", bytes_to_write);
+                // printf("bytes written=%" PRIuS "\n", bytes_to_write);
             }
         
             // uint8_t *row = (uint8_t*)g_backbuffer.memory;
@@ -1120,8 +1145,8 @@ int main(int, char **)
                 end_time_point - last_time_point).count();
             real32 fps = 1000.0f / ms_per_frame;
 
-            printf("%.2f Mc/f, %.2f ms/f, %.2f fps\n",
-                   mega_cycles_per_frame, ms_per_frame, fps);
+            // printf("%.2f Mc/f, %.2f ms/f, %.2f fps\n",
+            //        mega_cycles_per_frame, ms_per_frame, fps);
 
             last_cycle_count = end_cycle_count;
             last_time_point = end_time_point;

@@ -54,7 +54,7 @@
 #include <mmsystem.h>
 #include <dsound.h>
 #include <intrin.h>
-#include "handmade.h"
+
 
 struct win32_offscreen_buffer
 {
@@ -249,37 +249,27 @@ internal void win32_load_xinput()
     }
 }
 
-internal std::pair<real32, real32> win32_xinput_thumb_resolve_deadzone_normalize(
-    real32 x, real32 y, real32 deadzone)
+internal real32 win32_xinput_thumb_resolve_deadzone_normalize(
+    real32 val, real32 deadzone)
 {
     // normalize the input first (-1.0f to 1.0f)
     // max with -1 because abs(min val) is 1 great then max val
-    x = std::max(-1.0f, x / kXInputMaxStickVal);
-    y = std::max(-1.0f, y / kXInputMaxStickVal);
+    val = std::max(-1.0f, val / kXInputMaxStickVal);
 
     // adjust for deadzone
-    if (x >= 0.0f)
+    if (val >= 0.0f)
     {
-        x = x < deadzone ? 0 : x - deadzone;
+        val = val < deadzone ? 0 : val - deadzone;
     }
     else
     {
-        x = x > -deadzone ? 0 : x + deadzone;
-    }
-    if (y >= 0.0f)
-    {
-        y = y < deadzone ? 0 : y - deadzone;
-    }
-    else
-    {
-        y = y > -deadzone ? 0 : y + deadzone;
+        val = val > -deadzone ? 0 : val + deadzone;
     }
 
     // scale the val for smooth transition outside deadzone
-    x *= (1 / (1 - deadzone));
-    y *= (1 / (1 - deadzone));
+    val *= (1 / (1 - deadzone));
 
-    return std::make_pair(x, y);
+    return val;
 }
 
 internal win32_window_dimension win32_get_window_dimension(HWND hwnd)
@@ -401,7 +391,6 @@ internal void win32_debug_print_last_error()
 internal void win32_resize_backbuffer(win32_offscreen_buffer *buffer,
                                       int32_t width, int32_t height)
 {
-    // TODO: bulletproof this.
     // maybe don't free first, free after.
     if (buffer->memory)
     {
@@ -682,6 +671,7 @@ internal void win32_process_xinput_digital_button(game_button_state *new_state,
 
 internal void win32_process_kbd_msg(game_button_state *new_state, bool32 is_down)
 {
+    HANDMADE_ASSERT(is_down != new_state->ended_down);
     new_state->ended_down = is_down;
     ++new_state->num_half_transition;
 }
@@ -716,22 +706,26 @@ internal void win32_process_wm_msg_synchonously(
                     {
                     case 'W':
                         {
-                            OutputDebugStringA("W\n");
-                        }
-                        break;
-                    case 'A':
-                        {
-                            OutputDebugStringA("A\n");
+                            win32_process_kbd_msg(&kbd_controller->move_up,
+                                                  is_down);
                         }
                         break;
                     case 'S':
                         {
-                            OutputDebugStringA("S\n");
+                            win32_process_kbd_msg(&kbd_controller->move_down,
+                                                  is_down);
+                        }
+                        break;
+                    case 'A':
+                        {
+                            win32_process_kbd_msg(&kbd_controller->move_left,
+                                                  is_down);
                         }
                         break;
                     case 'D':
                         {
-                            OutputDebugStringA("D\n");
+                            win32_process_kbd_msg(&kbd_controller->move_right,
+                                                  is_down);
                         }
                         break;
                     case 'Q':
@@ -748,7 +742,7 @@ internal void win32_process_wm_msg_synchonously(
                         break;
                     case VK_UP:
                         {
-                            win32_process_kbd_msg(&kbd_controller->y,
+                            win32_process_kbd_msg(&kbd_controller->action_up,
                                                   is_down);
                         }
                         break;
@@ -758,19 +752,19 @@ internal void win32_process_wm_msg_synchonously(
                             sprintf(buf, "VK_DOWN: isdown=%d, wasdown=%d\n",
                                     is_down, was_down);
                             OutputDebugStringA(buf);
-                            win32_process_kbd_msg(&kbd_controller->a,
+                            win32_process_kbd_msg(&kbd_controller->action_down,
                                                   is_down);
                         }
                         break;
                     case VK_LEFT:
                         {
-                            win32_process_kbd_msg(&kbd_controller->x,
+                            win32_process_kbd_msg(&kbd_controller->action_left,
                                                   is_down);
                         }
                         break;
                     case VK_RIGHT:
                         {
-                            win32_process_kbd_msg(&kbd_controller->b,
+                            win32_process_kbd_msg(&kbd_controller->action_right,
                                                   is_down);
                         }
                         break;
@@ -938,8 +932,10 @@ int32_t CALLBACK wWinMain(
         {
             // We don't really need old input for keyboard as all keyboard
             // events are processed by wm msgs. So, just copy the old state.
-            game_controller_input *kbd_controller = &new_input->kbd_controller;
-            *kbd_controller = old_input->kbd_controller;
+            game_controller_input *kbd_controller =
+                    get_controller(new_input, game_input::kbd_controller_index);
+            *kbd_controller =
+                    *get_controller(old_input, game_input::kbd_controller_index);
 
             win32_process_wm_msg_synchonously(kbd_controller);
 
@@ -949,48 +945,63 @@ int32_t CALLBACK wWinMain(
             }
 
             constexpr uint32_t max_controller_count = std::min(
-                XUSER_MAX_COUNT, game_input::max_controller_count);
+                XUSER_MAX_COUNT, game_input::max_controller_count - 1);
             for (DWORD controller_index = 0;
                  controller_index < max_controller_count;
                  ++controller_index)
             {
+                // controller index 0 is reserved for keyboard
+                DWORD true_controller_index = controller_index + 1;
                 XINPUT_STATE controller_state {};
+                game_controller_input *new_controller =
+                        get_controller(new_input, true_controller_index);
                 // Simply get the state of the controller from XInput.
                 if (ERROR_SUCCESS == XInputGetState(controller_index,
                                                     &controller_state))
                 {
                     // Controller is connected
-                    game_controller_input *new_controller =
-                            &new_input->controllers[controller_index];
+                    new_controller->is_connected = true;
                     const game_controller_input *old_controller =
-                            &old_input->controllers[controller_index];
+                            get_controller(old_input, true_controller_index);
                     // dwPacketNumber indicates if there have been state changes
                     controller_state.dwPacketNumber;
                     const XINPUT_GAMEPAD *pad = &controller_state.Gamepad;
+
                     // these are what we care about
-                    bool32 up = pad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
-                    bool32 down = pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
-                    bool32 left = pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
-                    bool32 right = pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
-                    // bool32 start = pad->wButtons & XINPUT_GAMEPAD_START;
-                    // bool32 back = pad->wButtons & XINPUT_GAMEPAD_BACK;
-                
                     win32_process_xinput_digital_button(
-                        &new_controller->a,
-                        &old_controller->a,
+                        &new_controller->move_up,
+                        &old_controller->move_up,
+                        pad, XINPUT_GAMEPAD_DPAD_UP);
+                    win32_process_xinput_digital_button(
+                        &new_controller->move_down,
+                        &old_controller->move_down,
+                        pad, XINPUT_GAMEPAD_DPAD_DOWN);
+                    win32_process_xinput_digital_button(
+                        &new_controller->move_left,
+                        &old_controller->move_left,
+                        pad, XINPUT_GAMEPAD_DPAD_LEFT);
+                    win32_process_xinput_digital_button(
+                        &new_controller->move_right,
+                        &old_controller->move_right,
+                        pad, XINPUT_GAMEPAD_DPAD_RIGHT);
+
+                    win32_process_xinput_digital_button(
+                        &new_controller->action_up,
+                        &old_controller->action_up,
+                        pad, XINPUT_GAMEPAD_Y);
+                    win32_process_xinput_digital_button(
+                        &new_controller->action_down,
+                        &old_controller->action_down,
                         pad, XINPUT_GAMEPAD_A);
                     win32_process_xinput_digital_button(
-                        &new_controller->b,
-                        &old_controller->b,
-                        pad, XINPUT_GAMEPAD_B);
-                    win32_process_xinput_digital_button(
-                        &new_controller->x,
-                        &old_controller->x,
+                        &new_controller->action_left,
+                        &old_controller->action_left,
                         pad, XINPUT_GAMEPAD_X);
                     win32_process_xinput_digital_button(
-                        &new_controller->y,
-                        &old_controller->y,
-                        pad, XINPUT_GAMEPAD_Y);
+                        &new_controller->action_right,
+                        &old_controller->action_right,
+                        pad, XINPUT_GAMEPAD_B);
+
                     win32_process_xinput_digital_button(
                         &new_controller->left_shoulder,
                         &old_controller->left_shoulder,
@@ -1000,58 +1011,44 @@ int32_t CALLBACK wWinMain(
                         &old_controller->right_shoulder,
                         pad, XINPUT_GAMEPAD_RIGHT_SHOULDER);
                 
- 
-                    auto left_stick_xy =
-                            win32_xinput_thumb_resolve_deadzone_normalize(
-                                pad->sThumbLX, pad->sThumbLY,
-                                left_thumb_norm_deadzone);
-                    real32 left_stick_x = left_stick_xy.first;
-                    real32 left_stick_y = left_stick_xy.second;
-                    auto right_stick_xy =
-                            win32_xinput_thumb_resolve_deadzone_normalize(
-                                pad->sThumbRX, pad->sThumbRY,
-                                right_thumb_norm_deadzone);
-                    real32 right_stick_x = right_stick_xy.first;
-                    real32 right_stick_y = right_stick_xy.second;
-                    // std::stringstream ss;
-                    // ss << "stickx = " << left_stick_x
-                    // << " sticky=" << left_stick_y << std::endl;
-                    // OutputDebugStringA(ss.str().c_str());
+                    // bool32 start = pad->wButtons & XINPUT_GAMEPAD_START;
+                    // bool32 back = pad->wButtons & XINPUT_GAMEPAD_BACK;
+                    win32_process_xinput_digital_button(
+                        &new_controller->start,
+                        &old_controller->start,
+                        pad, XINPUT_GAMEPAD_START);
+                    win32_process_xinput_digital_button(
+                        &new_controller->back,
+                        &old_controller->back,
+                        pad, XINPUT_GAMEPAD_BACK);
+
+                    // process stick
                     new_controller->is_analog = true;
+                    new_controller->left_stick.avg_x =
+                            win32_xinput_thumb_resolve_deadzone_normalize(
+                                pad->sThumbLX,
+                                left_thumb_norm_deadzone);
+                    new_controller->left_stick.avg_y =
+                            win32_xinput_thumb_resolve_deadzone_normalize(
+                                pad->sThumbLY,
+                                left_thumb_norm_deadzone);
 
-                    new_controller->left_stick.start_x
-                            = old_controller->left_stick.end_x;
-                    new_controller->left_stick.end_x = left_stick_x;
-                    new_controller->left_stick.min_x
-                            = new_controller->left_stick.max_x
-                            = new_controller->left_stick.end_x;
-                    new_controller->left_stick.start_y
-                            = old_controller->left_stick.end_y;
-                    new_controller->left_stick.end_y = left_stick_y;
-                    new_controller->left_stick.min_y
-                            = new_controller->left_stick.max_y
-                            = new_controller->left_stick.end_y;
-
-                    new_controller->right_stick.start_x
-                            = old_controller->right_stick.end_x;
-                    new_controller->right_stick.end_x = right_stick_x;
-                    new_controller->right_stick.min_x
-                            = new_controller->right_stick.max_x
-                            = new_controller->right_stick.end_x;
-                    new_controller->right_stick.start_y
-                            = old_controller->right_stick.end_y;
-                    new_controller->right_stick.end_y = right_stick_y;
-                    new_controller->right_stick.min_y
-                            = new_controller->right_stick.max_y
-                            = new_controller->right_stick.end_y;
+                    new_controller->right_stick.avg_x =
+                            win32_xinput_thumb_resolve_deadzone_normalize(
+                                pad->sThumbRX,
+                                right_thumb_norm_deadzone);
+                    new_controller->right_stick.avg_y =
+                            win32_xinput_thumb_resolve_deadzone_normalize(
+                                pad->sThumbRY,
+                                right_thumb_norm_deadzone);
                 }
                 else
                 {
-                    // Controller is not connected 
+                    // Controller is not connected
+                    new_controller->is_connected = false;
                 }
             }
 
-            // TODO: Fix This!!!
             // DirectSound output test
             uint32_t byte_to_lock = 0;
             uint32_t bytes_to_write = 0;
@@ -1135,11 +1132,11 @@ int32_t CALLBACK wWinMain(
             real32 fps = static_cast<real32>(perf_count_freq) /
                     static_cast<real32>(counter_elapsed);
 
-            char buf[256];
-            sprintf_s(buf, sizeof(buf), "%.2f Mc/f, %.2f ms/f, %.2f fps\n",
-                      mega_cycles_per_frame, ms_per_frame, fps);
-            OutputDebugStringA(buf);
-        
+            // char buf[256];
+            // sprintf_s(buf, sizeof(buf), "%.2f Mc/f, %.2f ms/f, %.2f fps\n",
+            //           mega_cycles_per_frame, ms_per_frame, fps);
+            // OutputDebugStringA(buf);
+
             last_perf_counter = end_perf_counter;
             last_cycle_count = end_cycle_count;
         }

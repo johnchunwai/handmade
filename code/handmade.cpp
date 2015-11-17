@@ -85,54 +85,62 @@ internal void game_update_and_render(game_memory *memory,
         state->tone_hz = 256.0f;
         memory->is_initialized = true;
     }
+
+    for (int controller_index = 0;
+         controller_index < game_input::max_controller_count;
+         ++controller_index)
+    {
+        const game_controller_input *controller =
+                get_controller(input, controller_index);
+        if (controller->is_analog)
+        {
+            state->tone_hz = 256.0f + 128.0f * controller->right_stick.avg_y;
+            state->blue_offset -= static_cast<int>(
+                controller->left_stick.avg_x * 10.0f);
+            state->green_offset += static_cast<int>(
+                controller->left_stick.avg_y * 5.0f);
+        }
+        else
+        {
+            state->blue_offset += controller->move_left.ended_down;
+            state->blue_offset -= controller->move_right.ended_down;
+        }
+
+        if (controller->action_down.ended_down)
+        {
+            state->green_offset += 1;
+        }
+        // if (left_stick_x > kEpsilonReal32 || left_stick_x < -kEpsilonReal32)
+        // {
+        // }
+        // if (left_stick_y > kEpsilonReal32 || left_stick_y < -kEpsilonReal32)
+        // {
+        // }
+        // if (x_button)
+        // {
+        //     blue_offset += 5;
+
+        //     // Add some vibration left motor
+        //     XINPUT_VIBRATION vibration {};
+        //     vibration.wLeftMotorSpeed = 65535;
+        //     XInputSetState(controller_index, &vibration);
+        // }
+        // if (y_button)
+        // {
+        //     green_offset += 2;
+
+        //     // Add some vibration right motor
+        //     XINPUT_VIBRATION vibration {};
+        //     vibration.wRightMotorSpeed = 10000;
+        //     XInputSetState(controller_index, &vibration);
+        // }
+        // if (a_button)
+        // {
+        //     XINPUT_VIBRATION vibration {};
+        //     XInputSetState(controller_index, &vibration);
+        // }
+    }
     
-    const game_controller_input *controller0 = &input->controllers[0];
-    const game_controller_input *kbd_controller = &input->kbd_controller;
-    if (controller0->is_analog)
-    {
-        state->tone_hz = 256.0f + 128.0f * controller0->right_stick.end_y;
-        state->blue_offset -= static_cast<int>(
-            controller0->left_stick.end_x * 10.0f);
-        // green_offset += static_cast<int>(controller0->left_stick.end_y * 5.0f);
-    }
-    else
-    {
-    }
-
-    if (controller0->a.ended_down || kbd_controller->a.ended_down)
-    {
-        state->green_offset += 1;
-    }
-    // if (left_stick_x > kEpsilonReal32 || left_stick_x < -kEpsilonReal32)
-    // {
-    // }
-    // if (left_stick_y > kEpsilonReal32 || left_stick_y < -kEpsilonReal32)
-    // {
-    // }
-    // if (x_button)
-    // {
-    //     blue_offset += 5;
-
-    //     // Add some vibration left motor
-    //     XINPUT_VIBRATION vibration {};
-    //     vibration.wLeftMotorSpeed = 65535;
-    //     XInputSetState(controller_index, &vibration);
-    // }
-    // if (y_button)
-    // {
-    //     green_offset += 2;
-
-    //     // Add some vibration right motor
-    //     XINPUT_VIBRATION vibration {};
-    //     vibration.wRightMotorSpeed = 10000;
-    //     XInputSetState(controller_index, &vibration);
-    // }
-    // if (a_button)
-    // {
-    //     XINPUT_VIBRATION vibration {};
-    //     XInputSetState(controller_index, &vibration);
-    // }
-
     // TODO: allow sample offsets here for more robust platform options
     game_output_sound(sound_buffer, state->tone_hz);
     render_weird_gradient(buffer, state->blue_offset,
