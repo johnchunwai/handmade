@@ -63,6 +63,11 @@ internal void game_update_and_render(game_memory *memory,
                                      game_sound_buffer *sound_buffer,
                                      const game_input *input)
 {
+    // ptr arithmethic is based on element size, so this works
+    HANDMADE_ASSERT((&input->controllers[0].terminator -
+                     &input->controllers[0].buttons[0]) ==
+                    static_cast<ptrdiff_t>(
+                        array_length(input->controllers[0].buttons)));
     HANDMADE_ASSERT(sizeof(game_state) <= memory->permanent_storage_size);
         
     game_state *state =

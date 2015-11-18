@@ -259,15 +259,15 @@ internal real32 win32_xinput_thumb_resolve_deadzone_normalize(
     // adjust for deadzone
     if (val >= 0.0f)
     {
-        val = val < deadzone ? 0 : val - deadzone;
+        val = val < deadzone ? 0.0f : val - deadzone;
     }
     else
     {
-        val = val > -deadzone ? 0 : val + deadzone;
+        val = val > -deadzone ? 0.0f : val + deadzone;
     }
 
     // scale the val for smooth transition outside deadzone
-    val *= (1 / (1 - deadzone));
+    val /= (1.0f - deadzone);
 
     return val;
 }

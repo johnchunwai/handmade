@@ -497,16 +497,16 @@ internal real32 sdl_thumb_stick_resolve_deadzone_normalize(
     // adjust for deadzone
     if (val >= 0.0f)
     {
-        val = val < deadzone ? 0 : val - deadzone;
+        val = val < deadzone ? 0.0f : val - deadzone;
     }
     else
     {
-        val = val > -deadzone ? 0 : val + deadzone;
+        val = val > -deadzone ? 0.0f : val + deadzone;
     }
 
     // scale the val for smooth transition outside deadzone
     // sdl flips y-axis compared to xinput
-    val *= (1.0f / (1.0f - deadzone));
+    val /= (1.0f - deadzone);
 
     return val;
 }
